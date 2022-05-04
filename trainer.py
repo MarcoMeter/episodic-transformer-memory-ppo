@@ -121,6 +121,8 @@ class PPOTrainer:
         for t in range(self.config["worker_steps"]):
             # Gradients can be omitted for sampling training data
             with torch.no_grad():
+                # Save the initial observations and recurrentl cell states
+                self.buffer.obs[:, t] = torch.tensor(self.obs)
                 # Forward the model to retrieve the policy, the states' value and the recurrent cell states
                 policy, value = self.model(torch.tensor(self.obs))
                 self.buffer.values[:, t] = value
@@ -194,16 +196,16 @@ class PPOTrainer:
         surr1 = ratio * normalized_advantage
         surr2 = torch.clamp(ratio, 1.0 - clip_range, 1.0 + clip_range) * normalized_advantage
         policy_loss = torch.min(surr1, surr2)
-        policy_loss = PPOTrainer._masked_mean(policy_loss, samples["loss_mask"])
+        policy_loss = policy_loss.mean()
 
         # Value  function loss
         sampled_return = samples["values"] + samples["advantages"]
         clipped_value = samples["values"] + (value - samples["values"]).clamp(min=-clip_range, max=clip_range)
         vf_loss = torch.max((value - sampled_return) ** 2, (clipped_value - sampled_return) ** 2)
-        vf_loss = PPOTrainer._masked_mean(vf_loss, samples["loss_mask"])
+        vf_loss = vf_loss.mean()
 
         # Entropy Bonus
-        entropy_bonus = PPOTrainer._masked_mean(policy.entropy(), samples["loss_mask"])
+        entropy_bonus = policy.entropy().mean()
 
         # Complete loss
         loss = -(policy_loss - self.config["value_loss_coefficient"] * vf_loss + beta * entropy_bonus)
