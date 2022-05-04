@@ -23,7 +23,6 @@ class PPOTrainer:
         """
         # Set variables
         self.config = config
-        self.recurrence = config["recurrence"]
         self.device = device
         self.run_id = run_id
         self.lr_schedule = config["learning_rate_schedule"]
@@ -59,13 +58,6 @@ class PPOTrainer:
 
         # Setup observation placeholder   
         self.obs = np.zeros((self.config["n_workers"],) + observation_space.shape, dtype=np.float32)
-
-        # Setup initial recurrent cell states (LSTM: tuple(tensor, tensor) or GRU: tensor)
-        hxs, cxs = self.model.init_recurrent_cell_states(self.config["n_workers"], self.device)
-        if self.recurrence["layer_type"] == "gru":
-            self.recurrent_cell = hxs
-        elif self.recurrence["layer_type"] == "lstm":
-            self.recurrent_cell = (hxs, cxs)
 
         # Reset workers (i.e. environments)
         print("Step 5: Reset workers")
@@ -129,16 +121,8 @@ class PPOTrainer:
         for t in range(self.config["worker_steps"]):
             # Gradients can be omitted for sampling training data
             with torch.no_grad():
-                # Save the initial observations and recurrentl cell states
-                self.buffer.obs[:, t] = torch.tensor(self.obs)
-                if self.recurrence["layer_type"] == "gru":
-                    self.buffer.hxs[:, t] = self.recurrent_cell.squeeze(0)
-                elif self.recurrence["layer_type"] == "lstm":
-                    self.buffer.hxs[:, t] = self.recurrent_cell[0].squeeze(0)
-                    self.buffer.cxs[:, t] = self.recurrent_cell[1].squeeze(0)
-
                 # Forward the model to retrieve the policy, the states' value and the recurrent cell states
-                policy, value, self.recurrent_cell = self.model(torch.tensor(self.obs), self.recurrent_cell, self.device)
+                policy, value = self.model(torch.tensor(self.obs))
                 self.buffer.values[:, t] = value
 
                 # Sample actions
@@ -161,19 +145,11 @@ class PPOTrainer:
                     worker.child.send(("reset", None))
                     # Get data from reset
                     obs = worker.child.recv()
-                    # Reset recurrent cell states
-                    if self.recurrence["reset_hidden_state"]:
-                        hxs, cxs = self.model.init_recurrent_cell_states(1, self.device)
-                        if self.recurrence["layer_type"] == "gru":
-                            self.recurrent_cell[:, w] = hxs
-                        elif self.recurrence["layer_type"] == "lstm":
-                            self.recurrent_cell[0][:, w] = hxs
-                            self.recurrent_cell[1][:, w] = cxs
                 # Store latest observations
                 self.obs[w] = obs
                             
         # Calculate advantages
-        _, last_value, _ = self.model(torch.tensor(self.obs), self.recurrent_cell, self.device)
+        _, last_value = self.model(torch.tensor(self.obs))
         self.buffer.calc_advantages(last_value, self.config["gamma"], self.config["lamda"])
 
         return episode_infos
@@ -191,7 +167,7 @@ class PPOTrainer:
         train_info = []
         for _ in range(self.config["epochs"]):
             # Retrieve the to be trained mini batches via a generator
-            mini_batch_generator = self.buffer.recurrent_mini_batch_generator()
+            mini_batch_generator = self.buffer.mini_batch_generator()
             for mini_batch in mini_batch_generator:
                 train_info.append(self._train_mini_batch(mini_batch, learning_rate, clip_range, beta))
         return train_info
@@ -208,14 +184,8 @@ class PPOTrainer:
         Returns:
             {list} -- list of trainig statistics (e.g. loss)
         """
-        # Retrieve sampled recurrent cell states to feed the model
-        if self.recurrence["layer_type"] == "gru":
-            recurrent_cell = samples["hxs"].unsqueeze(0)
-        elif self.recurrence["layer_type"] == "lstm":
-            recurrent_cell = (samples["hxs"].unsqueeze(0), samples["cxs"].unsqueeze(0))
-
         # Forward model
-        policy, value, _ = self.model(samples["obs"], recurrent_cell, self.device, self.recurrence["sequence_length"])
+        policy, value = self.model(samples["obs"])
 
         # Compute policy surrogates to establish the policy loss
         normalized_advantage = (samples["advantages"] - samples["advantages"].mean()) / (samples["advantages"].std() + 1e-8)
@@ -267,7 +237,6 @@ class PPOTrainer:
         self.writer.add_scalar("losses/policy_loss", training_stats[0], update)
         self.writer.add_scalar("losses/value_loss", training_stats[1], update)
         self.writer.add_scalar("losses/entropy", training_stats[3], update)
-        self.writer.add_scalar("training/sequence_length", self.buffer.true_sequence_length, update)
         self.writer.add_scalar("training/value_mean", torch.mean(self.buffer.values), update)
         self.writer.add_scalar("training/advantage_mean", torch.mean(self.buffer.advantages), update)
 
