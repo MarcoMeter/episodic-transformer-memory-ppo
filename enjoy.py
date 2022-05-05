@@ -38,19 +38,12 @@ def main():
     done = False
     episode_rewards = []
 
-    # Init recurrent cell
-    hxs, cxs = model.init_recurrent_cell_states(1, device)
-    if config["recurrence"]["layer_type"] == "gru":
-        recurrent_cell = hxs
-    elif config["recurrence"]["layer_type"] == "lstm":
-        recurrent_cell = (hxs, cxs)
-
     obs = env.reset()
     while not done:
         # Render environment
         env.render()
         # Forward model
-        policy, value, recurrent_cell = model(torch.tensor(np.expand_dims(obs, 0)), recurrent_cell, device, 1)
+        policy, value = model(torch.tensor(np.expand_dims(obs, 0)))
         # Sample action
         action = policy.sample().cpu().numpy()
         # Step environemnt
