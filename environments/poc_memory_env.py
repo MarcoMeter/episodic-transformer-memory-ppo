@@ -18,15 +18,14 @@ class PocMemoryEnv():
     Optionally and to increase the difficulty of the task, the agent's position can be frozen until the goal information is hidden.
     To further challenge the agent, the step_size can be decreased.
     """
-    def __init__(self, step_size:float=0.2, glob:bool=False, freeze:bool=False):
+    def __init__(self, step_size:float=0.2, glob:bool=False, freeze:bool=False, max_episode_steps:int=-1):
         """
         Args:
             step_size {float} -- Step size of the agent. Defaults to 0.2.
             glob {bool} -- Whether to sample starting positions across the entire space. Defaults to False.
             freeze_agent {bool} -- Whether to freeze the agent's position until goal positions are hidden. Defaults to False.
         """
-        # TODO, am besten übergibt man das auch bei init
-        # self.max_episode_steps = 
+        self.max_episode_steps = max_episode_steps
         self.freeze = freeze
         self._step_size = step_size
         self._min_steps = int(1.0 / self._step_size) + 1
@@ -92,6 +91,9 @@ class PocMemoryEnv():
         done = False
         info = None
         success = False
+        
+        if self.max_episode_steps > 0 and self._step_count >= self.max_episode_steps:
+            done = True
 
         if self._num_show_steps > self._step_count:
             # Execute the agent action if agent is allowed to move
