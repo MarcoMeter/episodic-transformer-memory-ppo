@@ -244,21 +244,6 @@ class PPOTrainer:
         self.writer.add_scalar("training/advantage_mean", torch.mean(self.buffer.advantages), update)
 
     @staticmethod
-    def _masked_mean(tensor:torch.Tensor, mask:torch.Tensor) -> torch.Tensor:
-            """
-            Returns the mean of the tensor but ignores the values specified by the mask.
-            This is used for masking out the padding of the loss functions.
-
-            Args:
-                tensor {Tensor} -- The to be masked tensor
-                mask {Tensor} -- The mask that is used to mask out padded values of a loss function
-
-            Returns:
-                {Tensor} -- Returns the mean of the masked tensor.
-            """
-            return (tensor.T * mask).sum() / torch.clamp((torch.ones_like(tensor.T) * mask).float().sum(), min=1.0)
-
-    @staticmethod
     def _process_episode_info(episode_info:list) -> dict:
         """Extracts the mean and std of completed episode statistics like length and total reward.
 

@@ -47,9 +47,6 @@ class Buffer():
             "log_probs": self.log_probs,
             "advantages": self.advantages,
             "obs": self.obs,
-            # The loss mask is used for masking the padding while computing the loss function.
-            # This is only of significance while using recurrence.
-            "loss_mask": torch.ones((self.n_workers, self.worker_steps), dtype=torch.float32)
         }
         
         # Flatten all samples and convert them to a tensor
