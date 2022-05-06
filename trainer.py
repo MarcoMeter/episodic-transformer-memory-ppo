@@ -40,11 +40,12 @@ class PPOTrainer:
         dummy_env = create_env(self.config["env"])
         observation_space = dummy_env.observation_space
         action_space_shape = (dummy_env.action_space.n,)
+        max_episode_length = dummy_env.max_episode_steps
         dummy_env.close()
 
         # Init buffer
         print("Step 2: Init buffer")
-        self.buffer = Buffer(self.config, observation_space, self.device)
+        self.buffer = Buffer(self.config, observation_space, max_episode_length, self.device)
 
         # Init model
         print("Step 3: Init model and optimizer")

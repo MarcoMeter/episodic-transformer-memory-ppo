@@ -4,7 +4,7 @@ import numpy as np
 
 class Buffer():
     """The buffer stores and prepares the training data. It supports recurrent policies. """
-    def __init__(self, config:dict, observation_space:spaces.Box, device:torch.device) -> None:
+    def __init__(self, config:dict, observation_space:spaces.Box, max_episode_length:int, device:torch.device) -> None:
         """
         Args:
             config {dict} -- Configuration and hyperparameters of the environment, trainer and model.
@@ -18,6 +18,9 @@ class Buffer():
         self.n_mini_batches = config["n_mini_batch"]
         self.batch_size = self.n_workers * self.worker_steps
         self.mini_batch_size = self.batch_size // self.n_mini_batches
+        self.max_episode_length = max_episode_length
+        self.num_mem_layers = config["episodic_memory"]["num_layers"]
+        self.mem_layer_size = config["episodic_memory"]["layer_size"]
 
         # Initialize the buffer's data storage
         self.rewards = np.zeros((self.n_workers, self.worker_steps), dtype=np.float32)
@@ -27,6 +30,11 @@ class Buffer():
         self.log_probs = torch.zeros((self.n_workers, self.worker_steps))
         self.values = torch.zeros((self.n_workers, self.worker_steps))
         self.advantages = torch.zeros((self.n_workers, self.worker_steps))
+        # Episodic memory buffer tensors
+        self.memories = np.zeros((self.n_workers, self.worker_steps, self.num_mem_layers, self.mem_layer_size), dtype=np.float32)
+        self.in_episode = np.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=np.float32)
+        self.out_episode = np.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=np.float32)
+        self.timestep = np.zeros((self.n_workers, ), dtype=np.uint)
 
     def prepare_batch_dict(self) -> None:
         """Flattens the training samples and stores them inside a dictionary. Due to using a recurrent policy,

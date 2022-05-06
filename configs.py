@@ -10,6 +10,11 @@ def cartpole_masked_config():
         "n_mini_batch": 4,
         "value_loss_coefficient": 0.2,
         "hidden_layer_size": 128,
+        "episodic_memory":
+            {
+                "num_layers": 1,
+                "layer_size": 128,
+            },
         "learning_rate_schedule":
             {
             "initial": 3.0e-4,
@@ -45,6 +50,11 @@ def minigrid_config():
         "n_mini_batch": 8,
         "value_loss_coefficient": 0.25,
         "hidden_layer_size": 512,
+        "episodic_memory":
+            {
+                "num_layers": 1,
+                "layer_size": 128,
+            },
         "learning_rate_schedule":
             {
             "initial": 2.0e-4,
@@ -80,6 +90,11 @@ def poc_memory_env_config():
         "n_mini_batch": 8,
         "value_loss_coefficient": 0.1,
         "hidden_layer_size": 64,
+        "episodic_memory":
+            {
+                "num_layers": 1,
+                "layer_size": 128,
+            },
         "learning_rate_schedule":
             {
             "initial": 3.0e-4,
@@ -115,6 +130,11 @@ def carpole_config():
         "n_mini_batch": 4,
         "value_loss_coefficient": 0.2,
         "hidden_layer_size": 128,
+        "episodic_memory":
+            {
+                "num_layers": 1,
+                "layer_size": 128,
+            },
         "learning_rate_schedule":
             {
             "initial": 3.0e-4,
