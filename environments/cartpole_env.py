@@ -5,6 +5,7 @@ import time
 class CartPole:
     def __init__(self, mask_velocity = False):
         self._env = gym.make("CartPole-v0")
+        self.max_episode_steps = self._env.spec.max_episode_steps
         # Whether to make CartPole partial observable by masking out the velocity.
         if not mask_velocity:
             self._obs_mask = np.ones(4, dtype=np.float32)

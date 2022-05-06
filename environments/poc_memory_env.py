@@ -25,6 +25,8 @@ class PocMemoryEnv():
             glob {bool} -- Whether to sample starting positions across the entire space. Defaults to False.
             freeze_agent {bool} -- Whether to freeze the agent's position until goal positions are hidden. Defaults to False.
         """
+        # TODO, am besten übergibt man das auch bei init
+        # self.max_episode_steps = 
         self.freeze = freeze
         self._step_size = step_size
         self._min_steps = int(1.0 / self._step_size) + 1

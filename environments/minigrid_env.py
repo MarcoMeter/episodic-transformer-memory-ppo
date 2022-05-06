@@ -11,6 +11,7 @@ class Minigrid:
         # Decrease the agent's view size to raise the agent's memory challenge
         # On MiniGrid-Memory-S7-v0, the default view size is too large to actually demand a recurrent policy.
         self._env = ViewSizeWrapper(self._env, 3)
+        self.max_episode_steps = self._env.max_steps
         self._observation_space = spaces.Box(
                 low = 0,
                 high = 1.0,
