@@ -31,9 +31,9 @@ class Buffer():
         self.values = torch.zeros((self.n_workers, self.worker_steps))
         self.advantages = torch.zeros((self.n_workers, self.worker_steps))
         # Episodic memory buffer tensors
-        self.memories = np.zeros((self.n_workers, self.worker_steps, self.num_mem_layers, self.mem_layer_size), dtype=np.float32)
-        self.in_episode = np.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=np.float32)
-        self.out_episode = np.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=np.float32)
+        self.memories = np.zeros((self.n_workers, self.worker_steps, self.num_mem_layers, self.mem_layer_size), dtype=np.float32) # TODO torch.tensor
+        self.in_episode = np.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=np.float32) # TODO torch.tensor
+        self.out_episode = np.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=np.float32) # TODO torch.tensor
         self.timestep = np.zeros((self.n_workers, ), dtype=np.uint)
 
     def prepare_batch_dict(self) -> None:
@@ -48,11 +48,43 @@ class Buffer():
             "advantages": self.advantages,
             "obs": self.obs,
         }
+
+        # Retrieve the indices of dones as these are the last step of a whole episode
+        episode_done_indices = []
+        for w in range(self.n_workers):
+            episode_done_indices.append(list(self.dones[w].nonzero()[0]))
+            # Append the index of the last element of a trajectory as well, as it "artifically" marks the end of an episode
+            if len(episode_done_indices[w]) == 0 or episode_done_indices[w][-1] != self.worker_steps - 1:
+                episode_done_indices[w].append(self.worker_steps - 1)
+
+        # Process episodic memory to construct full memory episodes
+        # TODO not all episodes are of the same length
+        episodes = []
+        for w in range(self.n_workers):
+            start_index = 0
+            for count, done_index in enumerate(episode_done_indices[w]):
+                if count == 0:
+                    if self.timestep[w] > 0:
+                        # concat buffer in episode and memories until done index
+                        episode_memories = np.concatenate((self.in_episode[w, 0:self.timestep[w]], self.memories[w, 0:done_index + 1]))
+                        start_index = done_index + 1
+                else:
+                    episode_memories = self.memories[w, start_index:done_index + 1]
+                    start_index = done_index + 1
+            # pad
+            episode_memories = self.pad_sequence(episode_memories, self.max_episode_length)
+            # append
+            episodes.append(episode_memories)
+        # samples["memories"] = np.stack(episodes)
         
+        # Generate episodic memory mask
+        samples["mask"] = np.tril(np.ones((len(episodes), self.max_episode_length, self.max_episode_length)))
+
         # Flatten all samples and convert them to a tensor
         self.samples_flat = {}
         for key, value in samples.items():
-            self.samples_flat[key] = value.reshape(value.shape[0] * value.shape[1], *value.shape[2:])
+            if not key == "memories" and not key == "mask":
+                self.samples_flat[key] = value.reshape(value.shape[0] * value.shape[1], *value.shape[2:])
 
     def pad_sequence(self, sequence:np.ndarray, target_length:int) -> np.ndarray:
         """Pads a sequence to the target length using zeros.
@@ -72,11 +104,11 @@ class Buffer():
         # Construct array of zeros
         if len(sequence.shape) > 1:
             # Case: pad multi-dimensional array (e.g. visual observation)
-            padding = torch.zeros(((delta_length,) + sequence.shape[1:]), dtype=sequence.dtype)
+            padding = np.zeros(((delta_length,) + sequence.shape[1:]), dtype=sequence.dtype) # TODO torch.tensor
         else:
-            padding = torch.zeros(delta_length, dtype=sequence.dtype)
+            padding = np.zeros(delta_length, dtype=sequence.dtype) # TODO torch.tensor
         # Concatenate the zeros to the sequence
-        return torch.cat((sequence, padding), axis=0)
+        return np.concatenate((sequence, padding), axis=0) # TODO torch.tensor
 
     def mini_batch_generator(self):
         """A generator that returns a dictionary containing the data of a whole minibatch.

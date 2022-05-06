@@ -40,12 +40,12 @@ class PPOTrainer:
         dummy_env = create_env(self.config["env"])
         observation_space = dummy_env.observation_space
         action_space_shape = (dummy_env.action_space.n,)
-        max_episode_length = dummy_env.max_episode_steps
+        self.max_episode_length = dummy_env.max_episode_steps
         dummy_env.close()
 
         # Init buffer
         print("Step 2: Init buffer")
-        self.buffer = Buffer(self.config, observation_space, max_episode_length, self.device)
+        self.buffer = Buffer(self.config, observation_space, self.max_episode_length, self.device)
 
         # Init model
         print("Step 3: Init model and optimizer")
@@ -59,6 +59,8 @@ class PPOTrainer:
 
         # Setup observation placeholder   
         self.obs = np.zeros((self.config["n_workers"],) + observation_space.shape, dtype=np.float32)
+        # Setup timestep place
+        self.worker_current_episode_step = np.zeros((self.config["n_workers"], ), dtype=np.int_)
 
         # Reset workers (i.e. environments)
         print("Step 5: Reset workers")
@@ -118,6 +120,12 @@ class PPOTrainer:
             {list} -- list of results of completed episodes.
         """
         episode_infos = []
+
+        # Copy OUT episode memory to IN episode memory
+        self.buffer.in_episode  = np.copy(self.buffer.out_episode)
+        # Track worker timesteps from the preivous update cycle
+        self.buffer.timestep = np.copy(self.worker_current_episode_step)
+
         # Sample actions from the model and collect experiences for training
         for t in range(self.config["worker_steps"]):
             # Gradients can be omitted for sampling training data
@@ -142,12 +150,28 @@ class PPOTrainer:
             for w, worker in enumerate(self.workers):
                 obs, self.buffer.rewards[w, t], self.buffer.dones[w, t], info = worker.child.recv()
                 if info:
+                    # Reset the worker's current timestep
+                    self.worker_current_episode_step[w] = 0
                     # Store the information of the completed episode (e.g. total reward, episode length)
                     episode_infos.append(info)
                     # Reset agent (potential interface for providing reset parameters)
                     worker.child.send(("reset", None))
                     # Get data from reset
                     obs = worker.child.recv()
+                    # Write episodic memories
+                    # Initial element of the memory has to be set to zero
+                    # TODO for-loop is not necessary
+                    for mem_layer in range(self.buffer.num_mem_layers):
+                        self.buffer.memories[w, t, mem_layer] = np.repeat(0.0, self.buffer.mem_layer_size) # TODO
+                    # Clear OUT episode memory
+                    self.buffer.out_episode[w] = np.zeros((self.max_episode_length, self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=np.float32) # TODO -> use torch.tensor instead of numpy
+                else:
+                    # Increment worker timestep
+                    self.worker_current_episode_step[w] +=1
+                    # Write episodic memories
+                    # TODO this data is retrieved from the forward pass
+                    self.buffer.memories[w, t] = np.zeros((self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=np.float32) # TODO
+                    self.buffer.out_episode[w, self.worker_current_episode_step[w]] = np.zeros((self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=np.float32) # TODO
                 # Store latest observations
                 self.obs[w] = obs
                             
