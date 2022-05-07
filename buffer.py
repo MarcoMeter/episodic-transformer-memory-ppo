@@ -88,7 +88,6 @@ class Buffer():
         samples["mask"] = torch.from_numpy(samples["mask"])
         # Shift mask by one to account for the fact that for the first timestep the memory is empty
         samples["mask"] = torch.cat((torch.zeros((1, self.max_episode_length)), samples["mask"]), axis = 0)[:-1]
-        print(samples["mask"].shape)
 
         # Flatten all samples and convert them to a tensor except
         self.samples_flat = {}
