@@ -143,6 +143,7 @@ class Buffer():
         # Prepare indices (shuffle)
         batch_size_with_padding = self.samples_flat["episode_mask"].shape[0]
         indices = torch.randperm(batch_size_with_padding, dtype=torch.long)
+        # Mask the indices that are not part of an episode
         indices = indices[self.samples_flat["episode_mask"] == 1]
         mini_batch_size = self.batch_size // self.n_mini_batches
         for start in range(0, self.batch_size, mini_batch_size):
