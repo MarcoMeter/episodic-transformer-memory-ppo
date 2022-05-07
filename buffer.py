@@ -67,7 +67,7 @@ class Buffer():
                 start_index = 0
                 for count, done_index in enumerate(episode_done_indices[w]):
                     if count == 0 and key == "memories" and self.timestep[w] > 0:
-                        # concat buffer in episode and memories until done index
+                        # Concat buffer in episode and memories until done index
                         episode = torch.cat((self.in_episode[w, 0:self.timestep[w]], self.memories[w, 0:done_index + 1]))
                         start_index = done_index + 1
                     else:
