@@ -85,12 +85,15 @@ class Buffer():
         
         # Generate episodic memory mask
         samples["mask"] = np.tril(np.ones((self.max_episode_length, self.max_episode_length)))
+        samples["mask"] = torch.from_numpy(samples["mask"])
 
-        # Flatten all samples and convert them to a tensor
+        # Flatten all samples and convert them to a tensor except
         self.samples_flat = {}
         for key, value in samples.items():
             if not key == "memories" and not key == "mask":
                 self.samples_flat[key] = value.reshape(value.shape[0] * value.shape[1], *value.shape[2:])
+            else:
+                self.samples_flat[key] = value
 
     def pad_sequence(self, sequence:np.ndarray, target_length:int) -> np.ndarray:
         """Pads a sequence to the target length using zeros.
@@ -137,7 +140,7 @@ class Buffer():
         """
         # Prepare indices (shuffle)
         batch_size_with_padding = self.samples_flat["episode_mask"].shape[0]
-        indices = torch.randperm(batch_size_with_padding)
+        indices = torch.randperm(batch_size_with_padding, dtype=torch.long)
         indices = indices[self.samples_flat["episode_mask"] == 1]
         mini_batch_size = self.batch_size // self.n_mini_batches
         for start in range(0, self.batch_size, mini_batch_size):
@@ -147,9 +150,11 @@ class Buffer():
             mini_batch = {}
             for key, value in self.samples_flat.items():
                 if key == "memories":
-                    mini_batch["memories"] = value[int(mini_batch_indices / self.max_episode_length)].to(self.device)
+                    mini_batch_indices = torch.floor(mini_batch_indices / self.max_episode_length)
+                    mini_batch["memories"] = value[mini_batch_indices.long()].to(self.device)
                 elif key == "mask":
-                    mini_batch["mask"] = value[mini_batch_indices % self.max_episode_length].to(self.device)
+                    mini_batch_indices = torch.remainder(mini_batch_indices, self.max_episode_length)
+                    mini_batch["mask"] = value[mini_batch_indices.long()].to(self.device)
                 else:
                     mini_batch[key] = value[mini_batch_indices].to(self.device)
                     
