@@ -84,10 +84,9 @@ class Buffer():
             samples[key] = torch.stack(episodes)
         
         # Generate episodic memory mask
-        samples["mask"] = np.tril(np.ones((self.max_episode_length, self.max_episode_length)))
-        samples["mask"] = torch.from_numpy(samples["mask"])
+        samples["mask"] = torch.tril(torch.ones((self.max_episode_length, self.max_episode_length)))
         # Shift mask by one to account for the fact that for the first timestep the memory is empty
-        samples["mask"] = torch.cat((torch.zeros((1, self.max_episode_length)), samples["mask"]), axis = 0)[:-1]
+        samples["mask"] = torch.cat((torch.zeros((1, self.max_episode_length)), samples["mask"]))[:-1]
 
         # Flatten all samples and convert them to a tensor except
         self.samples_flat = {}
