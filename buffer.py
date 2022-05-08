@@ -79,10 +79,11 @@ class Buffer():
                     if count == 0 and key == "memories" and self.timestep[w] > 0:
                         # Concat buffer in episode and memories until done index
                         episode = torch.cat((self.in_episode[w, 0:self.timestep[w]], self.memories[w, 0:done_index + 1]))
-                        start_index = done_index + 1
                     else:
                         episode = value[w, start_index:done_index + 1]
-                        start_index = done_index + 1
+                        
+                    # Set the start index to the beginning of the next episode
+                    start_index = done_index + 1
                         
                     # Pad the episode with zeros if it is shorter than the maximum episode length
                     episode = self.pad_sequence(episode, self.max_episode_length)
