@@ -37,7 +37,7 @@ class Buffer():
         self.timestep = torch.zeros((self.n_workers, ), dtype=torch.uint8)
         self.index_mask = torch.ones((self.n_workers, self.worker_steps), dtype=torch.long)
         self.index = torch.range(0, self.n_workers * self.worker_steps - 1).reshape(self.n_workers, self.worker_steps).long()
-        
+
         # Generate episodic memory mask
         self.memory_mask = torch.tril(torch.ones((max_episode_length, max_episode_length)))
         # Shift mask by one to account for the fact that for the first timestep the memory is empty
@@ -92,7 +92,7 @@ class Buffer():
             
             samples[key] = torch.stack(episodes)
         
-        # Add memory mask to samples
+        # Add the memory mask to samples
         samples["memory_mask"] = self.memory_mask
 
         # Flatten all samples and convert them to a tensor except memories and its memory mask
