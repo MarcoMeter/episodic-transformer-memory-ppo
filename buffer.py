@@ -52,9 +52,9 @@ class Buffer():
         }
         # Episodic memory buffer
         episodic_memory = {
+            "indices": self.index,
             "index_mask": self.index_mask,
-            "memories": self.memories,
-            "indices": self.index
+            "memories": self.memories
         }
 
         # Retrieve the indices of dones as these are the last step of a whole episode
@@ -88,9 +88,9 @@ class Buffer():
             samples[key] = torch.stack(episodes)
         
         # Generate episodic memory mask
-        samples["mask"] = torch.tril(torch.ones((self.max_episode_length, self.max_episode_length)))
+        samples["memorie_mask"] = torch.tril(torch.ones((self.max_episode_length, self.max_episode_length)))
         # Shift mask by one to account for the fact that for the first timestep the memory is empty
-        samples["mask"] = torch.cat((torch.zeros((1, self.max_episode_length)), samples["memorie_mask"]))[:-1]
+        samples["memorie_mask"] = torch.cat((torch.zeros((1, self.max_episode_length)), samples["memorie_mask"]))[:-1]
 
         # Flatten all samples and convert them to a tensor except memories and its memorie mask
         self.samples_flat = {}
