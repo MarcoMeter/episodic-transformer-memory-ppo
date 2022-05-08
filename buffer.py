@@ -80,7 +80,6 @@ class Buffer():
                     # Append the episode to the list of episodes
                     episodes.append(episode)
             
-            # Store and flatt all samples
             samples[key] = torch.stack(episodes)
         
         # Generate episodic memory mask
