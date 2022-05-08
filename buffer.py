@@ -138,7 +138,7 @@ class Buffer():
         # Prepare indices
         batch_size_with_padding = self.samples_flat["index_mask"].shape[0]
         # Create the indices for the mini batches
-        indices = torch.range(0, batch_size_with_padding - 1)
+        indices = torch.range(0, batch_size_with_padding - 1).long()
         # Mask the indices that are not part of an episode
         indices = indices[self.samples_flat["index_mask"] == 1]
         # Shuffle the indices
@@ -157,7 +157,7 @@ class Buffer():
                     mini_batch_indices_ = torch.remainder(mini_batch_indices, self.max_episode_length)
                     mini_batch["memory_mask"] = value[mini_batch_indices_.long()].to(self.device)
                 else:
-                    mini_batch_indices_ = self.samples_flat["indices"][mini_batch_indices.long()]
+                    mini_batch_indices_ = self.samples_flat["indices"][mini_batch_indices]
                     mini_batch[key] = value[mini_batch_indices_].to(self.device)
                     
             yield mini_batch
