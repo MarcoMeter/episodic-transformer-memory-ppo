@@ -37,6 +37,11 @@ class Buffer():
         self.timestep = torch.zeros((self.n_workers, ), dtype=torch.uint8)
         self.index_mask = torch.ones((self.n_workers, self.worker_steps), dtype=torch.long)
         self.index = torch.range(0, self.n_workers * self.worker_steps - 1).reshape(self.n_workers, self.worker_steps).long()
+        
+        # Generate episodic memory mask
+        self.memory_mask = torch.tril(torch.ones((max_episode_length, max_episode_length)))
+        # Shift mask by one to account for the fact that for the first timestep the memory is empty
+        self.memory_mask = torch.cat((torch.zeros((1, max_episode_length)), self.memory_mask))[:-1]
 
     def prepare_batch_dict(self) -> None:
         """Flattens the training samples and stores them inside a dictionary. Due to using a recurrent policy,
@@ -65,7 +70,7 @@ class Buffer():
             if len(episode_done_indices[w]) == 0 or episode_done_indices[w][-1] != self.worker_steps - 1:
                 episode_done_indices[w].append(self.worker_steps - 1)
 
-        # Process episodic memory to construct full memory episodes
+        # Process episodic memory to construct full memory episodes and store them in samples
         for key, value in episodic_memory.items():
             episodes = []
             for w in range(self.n_workers):
@@ -87,10 +92,8 @@ class Buffer():
             
             samples[key] = torch.stack(episodes)
         
-        # Generate episodic memory mask
-        samples["memory_mask"] = torch.tril(torch.ones((self.max_episode_length, self.max_episode_length)))
-        # Shift mask by one to account for the fact that for the first timestep the memory is empty
-        samples["memory_mask"] = torch.cat((torch.zeros((1, self.max_episode_length)), samples["memory_mask"]))[:-1]
+        # Add memory mask to samples
+        samples["memory_mask"] = self.memory_mask
 
         # Flatten all samples and convert them to a tensor except memories and its memory mask
         self.samples_flat = {}
