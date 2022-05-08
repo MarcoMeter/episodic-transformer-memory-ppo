@@ -82,14 +82,14 @@ class Buffer():
                     else:
                         episode = value[w, start_index:done_index + 1]
                         
-                    # Set the start index to the beginning of the next episode
-                    start_index = done_index + 1
-                        
                     # Pad the episode with zeros if it is shorter than the maximum episode length
                     episode = self.pad_sequence(episode, self.max_episode_length)
                     
                     # Append the episode to the list of episodes
                     episodes.append(episode)
+                    
+                    # Set the start index to the beginning of the next episode
+                    start_index = done_index + 1
             
             samples[key] = torch.stack(episodes)
         
