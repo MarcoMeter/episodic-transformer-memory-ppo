@@ -90,12 +90,12 @@ class Buffer():
         # Generate episodic memory mask
         samples["mask"] = torch.tril(torch.ones((self.max_episode_length, self.max_episode_length)))
         # Shift mask by one to account for the fact that for the first timestep the memory is empty
-        samples["mask"] = torch.cat((torch.zeros((1, self.max_episode_length)), samples["mask"]))[:-1]
+        samples["mask"] = torch.cat((torch.zeros((1, self.max_episode_length)), samples["memorie_mask"]))[:-1]
 
-        # Flatten all samples and convert them to a tensor except memores and mask
+        # Flatten all samples and convert them to a tensor except memories and its memorie mask
         self.samples_flat = {}
         for key, value in samples.items():
-            if not key == "memories" and not key == "mask":
+            if not key == "memories" and not key == "memorie_mask":
                 self.samples_flat[key] = value.reshape(value.shape[0] * value.shape[1], *value.shape[2:])
             else:
                 self.samples_flat[key] = value
@@ -152,9 +152,9 @@ class Buffer():
                 if key == "memories":
                     mini_batch_indices_ = torch.floor(mini_batch_indices / self.max_episode_length)
                     mini_batch["memories"] = value[mini_batch_indices_.long()].to(self.device)
-                elif key == "mask":
+                elif key == "memorie_mask":
                     mini_batch_indices_ = torch.remainder(mini_batch_indices, self.max_episode_length)
-                    mini_batch["mask"] = value[mini_batch_indices_.long()].to(self.device)
+                    mini_batch["memorie_mask"] = value[mini_batch_indices_.long()].to(self.device)
                 else:
                     mini_batch_indices_ = self.samples_flat["indices"][mini_batch_indices.long()]
                     mini_batch[key] = value[mini_batch_indices_].to(self.device)
