@@ -31,9 +31,9 @@ class Buffer():
         self.values = torch.zeros((self.n_workers, self.worker_steps))
         self.advantages = torch.zeros((self.n_workers, self.worker_steps))
         # Episodic memory buffer tensors
-        self.memories = torch.zeros((self.n_workers, self.worker_steps, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32) # TODO torch.tensor
-        self.in_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32) # TODO torch.tensor
-        self.out_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32) # TODO torch.tensor
+        self.memories = torch.zeros((self.n_workers, self.worker_steps, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
+        self.in_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
+        self.out_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         self.timestep = torch.zeros((self.n_workers, ), dtype=torch.uint8)
         self.index_mask = torch.ones((self.n_workers, self.worker_steps), dtype=torch.long)
         self.index = torch.range(0, self.n_workers * self.worker_steps - 1).reshape(self.n_workers, self.worker_steps).long()
@@ -107,7 +107,7 @@ class Buffer():
         """Pads a sequence to the target length using zeros.
 
         Args:
-            sequence {np.ndarray} -- The to be padded array (i.e. sequence)
+            sequence {torch.tensor} -- The to be padded array (i.e. sequence)
             target_length {int} -- The desired length of the sequence
 
         Returns:
@@ -122,11 +122,11 @@ class Buffer():
         # Construct array of zeros
         if len(sequence.shape) > 1:
             # Case: pad multi-dimensional array (e.g. visual observation)
-            padding = torch.zeros(((delta_length,) + sequence.shape[1:]), dtype=sequence.dtype) # TODO torch.tensor
+            padding = torch.zeros(((delta_length,) + sequence.shape[1:]), dtype=sequence.dtype)
         else:
-            padding = torch.zeros(delta_length, dtype=sequence.dtype) # TODO torch.tensor
+            padding = torch.zeros(delta_length, dtype=sequence.dtype)
         # Concatenate the zeros to the sequence
-        return torch.cat((sequence, padding), axis=0) # TODO torch.tensor
+        return torch.cat((sequence, padding), axis=0)
 
     def mini_batch_generator(self):
         """A generator that returns a dictionary containing the data of a whole minibatch.
