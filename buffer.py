@@ -103,7 +103,7 @@ class Buffer():
             else:
                 self.samples_flat[key] = value
 
-    def pad_sequence(self, sequence:np.ndarray, target_length:int) -> np.ndarray:
+    def pad_sequence(self, sequence:torch.tensor, target_length:int) -> np.ndarray:
         """Pads a sequence to the target length using zeros.
 
         Args:
