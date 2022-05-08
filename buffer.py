@@ -30,13 +30,13 @@ class Buffer():
         self.log_probs = torch.zeros((self.n_workers, self.worker_steps))
         self.values = torch.zeros((self.n_workers, self.worker_steps))
         self.advantages = torch.zeros((self.n_workers, self.worker_steps))
-        self.index_mask = torch.ones((self.n_workers, self.worker_steps), dtype=torch.long)
-        self.index = torch.range(0, self.n_workers * self.worker_steps - 1).reshape(self.n_workers, self.worker_steps).long()
         # Episodic memory buffer tensors
         self.memories = torch.zeros((self.n_workers, self.worker_steps, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32) # TODO torch.tensor
         self.in_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32) # TODO torch.tensor
         self.out_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32) # TODO torch.tensor
         self.timestep = torch.zeros((self.n_workers, ), dtype=torch.uint8)
+        self.index_mask = torch.ones((self.n_workers, self.worker_steps), dtype=torch.long)
+        self.index = torch.range(0, self.n_workers * self.worker_steps - 1).reshape(self.n_workers, self.worker_steps).long()
 
     def prepare_batch_dict(self) -> None:
         """Flattens the training samples and stores them inside a dictionary. Due to using a recurrent policy,
