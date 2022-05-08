@@ -135,8 +135,9 @@ class Buffer():
         Yields:
             {dict} -- Mini batch data for training
         """
-        # Prepare indices (shuffle)
+        # Prepare indices
         batch_size_with_padding = self.samples_flat["index_mask"].shape[0]
+        # Create the indices for the mini batches
         indices = torch.range(0, batch_size_with_padding - 1)
         # Mask the indices that are not part of an episode
         indices = indices[self.samples_flat["index_mask"] == 1]
