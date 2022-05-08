@@ -84,7 +84,7 @@ class Buffer():
                         
                     # Pad the episode with zeros if it is shorter than the maximum episode length
                     episode = self.pad_sequence(episode, self.max_episode_length) # TODO: Maybe pad the episode with its actual longest episode length if it is shorter than the hyperparameter: maximum episode length
-                                                                                  # Note: Then we have to regenerate the memory_mask in this methode instead in the init function
+                                                                                  # Note: Then we have to regenerate the memory_mask in this method instead in the init function
                     # Append the episode to the list of episodes
                     episodes.append(episode)
                     
