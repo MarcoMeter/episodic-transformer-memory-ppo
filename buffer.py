@@ -34,9 +34,9 @@ class Buffer():
         self.memories = torch.zeros((self.n_workers, self.worker_steps, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         self.in_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         self.out_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
-        self.timestep = torch.zeros((self.n_workers, ), dtype=torch.uint8)
+        self.timestep = torch.zeros((self.n_workers, ), dtype=torch.long)
         self.index_mask = torch.ones((self.n_workers, self.worker_steps), dtype=torch.long)
-        self.index = torch.range(0, self.n_workers * self.worker_steps - 1).reshape(self.n_workers, self.worker_steps).long()
+        self.index = torch.range(0, self.n_workers * self.worker_steps - 1, dtype=torch.long).reshape(self.n_workers, self.worker_steps)
 
         # Generate episodic memory mask
         self.memory_mask = torch.tril(torch.ones((max_episode_length, max_episode_length)))

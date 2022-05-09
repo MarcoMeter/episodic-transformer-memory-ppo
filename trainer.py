@@ -130,7 +130,7 @@ class PPOTrainer:
         for t in range(self.config["worker_steps"]):
             # Gradients can be omitted for sampling training data
             with torch.no_grad():
-                # Save the initial observations and recurrentl cell states
+                # Save the initial observations
                 self.buffer.obs[:, t] = torch.tensor(self.obs)
                 # Forward the model to retrieve the policy, the states' value and the recurrent cell states
                 policy, value = self.model(torch.tensor(self.obs))
