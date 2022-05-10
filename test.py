@@ -15,7 +15,7 @@ def main():
         "episodic_memory":
         {
             "num_layers": 2,
-            "layer_size": 4
+            "layer_size": 1
         }
     }
     max_episode_length = 12
@@ -23,28 +23,48 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     buffer = Buffer(config, obs_space, max_episode_length, device)
 
+    # Observation Data
     obs_0 = torch.tensor([0, 1, 2, 3, 4, 0, 1, 2])
     obs_1 = torch.tensor([5, 6, 7, 8, 9, 10, 11, 0])
     obs_2 = torch.tensor([1, 2, 3, 4, 5, 6, 7, 8])
     obs_3 = torch.tensor([6, 0, 1, 2, 3, 4, 0, 1])
     buffer.obs = torch.unsqueeze(torch.stack((obs_0, obs_1, obs_2, obs_3)), dim=2)
 
+    # Done Data
     dones_0 = np.asarray([0, 0, 0, 0, 1, 0, 0, 0], dtype=bool)
     dones_1 = np.asarray([0, 0, 0, 0, 0, 0, 1, 0], dtype=bool)
     dones_2 = np.asarray([0, 0, 0, 0, 0, 0, 0, 0], dtype=bool)
     dones_3 = np.asarray([1, 0, 0, 0, 0, 1, 0, 0], dtype=bool)
     buffer.dones = np.stack((dones_0, dones_1, dones_2, dones_3))
     
-    # TODO Memories, IN Memory, Worker Indices
-    memory_0 = torch.tensor([])
-    memory_1 = torch.tensor([])
-    memory_2 = torch.tensor([])
-    memory_3 = torch.tensor([])
-    in_0 = torch.tensor([])
-    in_1 = torch.tensor([])
-    in_2 = torch.tensor([])
-    in_3 = torch.tensor([])
+    # Episodic Memory Data
+    memory_0 = torch.tensor([[0, 1, 2, 3, 4, 0, 1, 2], [0, 1, 2, 3, 4, 0, 1, 2]])
+    memory_1 = torch.tensor([[5, 6, 7, 8, 9, 10, 11, 0], [5, 6, 7, 8, 9, 10, 11, 0]])
+    memory_2 = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 5, 6, 7, 8]])
+    memory_3 = torch.tensor([[6, 0, 1, 2, 3, 4, 0, 1], [6, 0, 1, 2, 3, 4, 0, 1]])
+    buffer.memories = torch.stack((memory_0, memory_1, memory_2, memory_3), dim=0).unsqueeze(3).swapaxes(1, 2)
+    in_0 = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+    in_1 = torch.tensor([[0, 1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0], [0, 1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0]])
+    in_2 = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+    in_3 = torch.tensor([[0, 1, 2, 3, 4, 5, 0, 0, 0, 0, 0, 0], [0, 1, 2, 3, 4, 5, 0, 0, 0, 0, 0, 0]])
+    buffer.in_episode = torch.stack((in_0, in_1, in_2, in_3), dim=0).unsqueeze(3).swapaxes(1, 2)
     buffer.timestep = torch.tensor([obs_0[0], obs_1[0], obs_2[0], obs_3[0]])
+    
+    buffer.prepare_batch_dict()
+
+    for mini_batch in buffer.mini_batch_generator():
+        print("obs")
+        print(mini_batch["obs"].shape)
+        print(mini_batch["obs"][0])
+        print("---------------")
+        print("memories")
+        print(mini_batch["memories"].shape)
+        print(mini_batch["memories"].swapaxes(1, 2)[0, 0].squeeze())
+        print("---------------")
+        print("memory mask")
+        print(mini_batch["memory_mask"].shape)
+        print(mini_batch["memory_mask"][0])
+        exit()
 
     print(string.ascii_lowercase)
 
