@@ -8,7 +8,10 @@ from buffer import Buffer
 
 def main():
     # Set seed
-    torch.manual_seed(1000)
+    # torch.manual_seed(800)
+    print("SEED")
+    print(torch.seed())
+    print("---------------")
 
     # Init buffer
     config = {
@@ -54,19 +57,20 @@ def main():
     buffer.timestep = torch.tensor([obs_0[0], obs_1[0], obs_2[0], obs_3[0]])
     
     buffer.prepare_batch_dict()
+    p_index = 1
 
     for mini_batch in buffer.mini_batch_generator():
         print("obs")
         print(mini_batch["obs"].shape)
-        print(mini_batch["obs"][0])
+        print(mini_batch["obs"][p_index])
         print("---------------")
         print("memories")
         print(mini_batch["memories"].shape)
-        print(mini_batch["memories"].swapaxes(1, 2)[0, 0].squeeze())
+        print(mini_batch["memories"].swapaxes(1, 2)[p_index, 0].squeeze())
         print("---------------")
         print("memory mask")
         print(mini_batch["memory_mask"].shape)
-        print(mini_batch["memory_mask"][0])
+        print(mini_batch["memory_mask"][p_index])
         exit()
 
     print(string.ascii_lowercase)

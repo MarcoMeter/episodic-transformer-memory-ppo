@@ -41,7 +41,9 @@ class Buffer():
         # Generate episodic memory mask
         self.memory_mask = torch.tril(torch.ones((max_episode_length, max_episode_length)))
         # Shift mask by one to account for the fact that for the first timestep the memory is empty
-        self.memory_mask = torch.cat((torch.zeros((1, max_episode_length)), self.memory_mask))[:-1]
+        # self.memory_mask = torch.cat((torch.zeros((1, max_episode_length)), self.memory_mask))[:-1]
+        # Make sure that the first element of each mask is 0
+        self.memory_mask[:, 0] = torch.zeros(max_episode_length)
 
     def prepare_batch_dict(self) -> None:
         """Flattens the training samples and stores them inside a dictionary. Due to using a recurrent policy,
