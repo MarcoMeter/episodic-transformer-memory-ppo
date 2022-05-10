@@ -7,6 +7,9 @@ from buffer import Buffer
 
 
 def main():
+    # Set seed
+    torch.manual_seed(1000)
+
     # Init buffer
     config = {
         "n_workers": 4,
