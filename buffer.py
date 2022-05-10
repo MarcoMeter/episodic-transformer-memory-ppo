@@ -35,11 +35,12 @@ class Buffer():
         self.in_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         self.out_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         self.timestep = torch.zeros((self.n_workers, ), dtype=torch.long)
+        self.timesteps = torch.zeros((self.n_workers, self.worker_steps), dtype=torch.long)
         self.index_mask = torch.ones((self.n_workers, self.worker_steps), dtype=torch.long)
         self.index = torch.arange(0, self.n_workers * self.worker_steps, dtype=torch.long).reshape(self.n_workers, self.worker_steps)
 
         # Generate episodic memory mask
-        self.memory_mask = torch.tril(torch.ones((max_episode_length, max_episode_length)))
+        self.memory_mask = torch.tril(torch.ones((max_episode_length, max_episode_length))) # TODO dtype=torch.bool
         # Shift mask by one to account for the fact that for the first timestep the memory is empty
         # self.memory_mask = torch.cat((torch.zeros((1, max_episode_length)), self.memory_mask))[:-1]
         # Make sure that the first element of each mask is 0
@@ -55,7 +56,8 @@ class Buffer():
             "values": self.values,
             "log_probs": self.log_probs,
             "advantages": self.advantages,
-            "obs": self.obs
+            "obs": self.obs,
+            "timesteps": self.timesteps
         }
         # Episodic memory buffer
         episodic_memory = {
@@ -160,12 +162,16 @@ class Buffer():
                     mini_batch_indices_ = torch.floor(mini_batch_indices / self.max_episode_length)
                     mini_batch["memories"] = value[mini_batch_indices_.long()].to(self.device)
                 elif key == "memory_mask":
-                    mini_batch_indices_ = torch.remainder(mini_batch_indices, self.max_episode_length)
-                    mini_batch["memory_mask"] = value[mini_batch_indices_.long()].to(self.device)
+                    # mini_batch_indices_ = torch.remainder(mini_batch_indices, self.max_episode_length)
+                    # print(mini_batch["obs"].reshape(-1))
+                    # print(mini_batch_indices)
+                    # print(mini_batch_indices_)
+                    # mini_batch["memory_mask"] = value[mini_batch_indices_.long()].to(self.device)
+                    mini_batch["memory_mask"] = value[mini_batch["timesteps"]].to(self.device)
+                    print(mini_batch["timesteps"])
                 else:
                     mini_batch_indices_ = self.samples_flat["indices"][mini_batch_indices]
                     mini_batch[key] = value[mini_batch_indices_].to(self.device)
-                    
             yield mini_batch
 
     def calc_advantages(self, last_value:torch.tensor, gamma:float, lamda:float) -> None:

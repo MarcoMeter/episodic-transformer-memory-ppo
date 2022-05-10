@@ -43,6 +43,13 @@ def main():
     dones_3 = np.asarray([1, 0, 0, 0, 0, 1, 0, 0], dtype=bool)
     buffer.dones = np.stack((dones_0, dones_1, dones_2, dones_3))
     
+    # Timesteps data
+    steps_0 = torch.tensor([0, 1, 2, 3, 4, 0, 1, 2])
+    steps_1 = torch.tensor([5, 6, 7, 8, 9, 10, 11, 0])
+    steps_2 = torch.tensor([1, 2, 3, 4, 5, 6, 7, 8])
+    steps_3 = torch.tensor([6, 0, 1, 2, 3, 4, 0, 1])
+    buffer.timesteps = torch.stack((steps_0, steps_1, steps_2, steps_3))
+    
     # Episodic Memory Data
     memory_0 = torch.tensor([[0, 1, 2, 3, 4, 0, 1, 2], [0, 1, 2, 3, 4, 0, 1, 2]])
     memory_1 = torch.tensor([[5, 6, 7, 8, 9, 10, 11, 0], [5, 6, 7, 8, 9, 10, 11, 0]])
