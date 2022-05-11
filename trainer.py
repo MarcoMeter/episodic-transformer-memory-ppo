@@ -135,7 +135,7 @@ class PPOTrainer:
                 # Save the initial observations
                 self.buffer.obs[:, t] = torch.tensor(self.obs)
                 # Forward the model to retrieve the policy, the states' value and the recurrent cell states
-                policy, value = self.model(torch.tensor(self.obs))
+                policy, value, memory = self.model(torch.tensor(self.obs), None, None)
                 self.buffer.values[:, t] = value
 
                 # Sample actions
@@ -178,7 +178,7 @@ class PPOTrainer:
                 self.obs[w] = obs
                             
         # Calculate advantages
-        _, last_value = self.model(torch.tensor(self.obs))
+        _, last_value, _ = self.model(torch.tensor(self.obs), None, None)
         self.buffer.calc_advantages(last_value, self.config["gamma"], self.config["lamda"])
 
         return episode_infos
@@ -214,7 +214,7 @@ class PPOTrainer:
             {list} -- list of trainig statistics (e.g. loss)
         """
         # Forward model
-        policy, value = self.model(samples["obs"])
+        policy, value, _ = self.model(samples["obs"], None, None)
 
         # Compute policy surrogates to establish the policy loss
         normalized_advantage = (samples["advantages"] - samples["advantages"].mean()) / (samples["advantages"].std() + 1e-8)

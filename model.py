@@ -56,7 +56,7 @@ class ActorCriticModel(nn.Module):
         self.value = nn.Linear(self.hidden_size, 1)
         nn.init.orthogonal_(self.value.weight, 1)
 
-    def forward(self, obs:torch.tensor):
+    def forward(self, obs:torch.tensor, memories:torch.tensor, memory_mask:torch.tensor):
         """Forward pass of the model
 
         Args:
@@ -67,6 +67,7 @@ class ActorCriticModel(nn.Module):
             {Categorical} -- Policy: Categorical distribution
             {torch.tensor} -- Value Function: Value
         """
+        memory = None
         # Set observation as input to the model
         h = obs
         # Forward observation encoder
@@ -92,7 +93,7 @@ class ActorCriticModel(nn.Module):
         # Head: Policy
         pi = Categorical(logits=self.policy(h_policy))
 
-        return pi, value
+        return pi, value, memory
 
     def get_conv_output(self, shape:tuple) -> int:
         """Computes the output size of the convolutional layers by feeding a dummy tensor.
