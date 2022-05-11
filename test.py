@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import string
 
 from gym import spaces
 from buffer import Buffer
@@ -78,9 +77,8 @@ def main():
         print("memory mask")
         print(mini_batch["memory_mask"].shape)
         print(mini_batch["memory_mask"][p_index])
-        exit()
-
-    print(string.ascii_lowercase)
+        # exit()
+        assert torch.equal(torch.sum(mini_batch["memory_mask"], 1), mini_batch["obs"].squeeze())
 
 
 if __name__ == "__main__":

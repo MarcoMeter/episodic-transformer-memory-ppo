@@ -34,17 +34,14 @@ class Buffer():
         self.memories = torch.zeros((self.n_workers, self.worker_steps, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         self.in_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         self.out_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
-        self.timestep = torch.zeros((self.n_workers, ), dtype=torch.long)
-        self.timesteps = torch.zeros((self.n_workers, self.worker_steps), dtype=torch.long)
+        self.timestep = torch.zeros((self.n_workers, ), dtype=torch.uint8)
         self.index_mask = torch.ones((self.n_workers, self.worker_steps), dtype=torch.long)
-        self.index = torch.arange(0, self.n_workers * self.worker_steps, dtype=torch.long).reshape(self.n_workers, self.worker_steps)
+        self.index = torch.range(0, self.n_workers * self.worker_steps - 1).reshape(self.n_workers, self.worker_steps).long()
 
         # Generate episodic memory mask
-        self.memory_mask = torch.tril(torch.ones((max_episode_length, max_episode_length))) # TODO dtype=torch.bool
+        self.memory_mask = torch.tril(torch.ones((max_episode_length, max_episode_length)))
         # Shift mask by one to account for the fact that for the first timestep the memory is empty
-        # self.memory_mask = torch.cat((torch.zeros((1, max_episode_length)), self.memory_mask))[:-1]
-        # Make sure that the first element of each mask is 0
-        self.memory_mask[:, 0] = torch.zeros(max_episode_length)
+        self.memory_mask = torch.cat((torch.zeros((1, max_episode_length)), self.memory_mask))[:-1]
 
     def prepare_batch_dict(self) -> None:
         """Flattens the training samples and stores them inside a dictionary. Due to using a recurrent policy,
@@ -56,8 +53,7 @@ class Buffer():
             "values": self.values,
             "log_probs": self.log_probs,
             "advantages": self.advantages,
-            "obs": self.obs,
-            "timesteps": self.timesteps
+            "obs": self.obs
         }
         # Episodic memory buffer
         episodic_memory = {
@@ -83,6 +79,10 @@ class Buffer():
                     if count == 0 and key == "memories" and self.timestep[w] > 0:
                         # Concat buffer in episode and memories until done index
                         episode = torch.cat((self.in_episode[w, 0:self.timestep[w]], self.memories[w, 0:done_index + 1]))
+                    elif count == 0 and (key == "indices" or key == "index_mask") and self.timestep[w] > 0:
+                        # Padd the indices and index mask from left to adapt to the episode start from the previous update
+                        padding = torch.zeros((self.timestep[w]), dtype=torch.long)
+                        episode = torch.cat((padding, value[w, start_index:done_index + 1]))                   
                     else:
                         episode = value[w, start_index:done_index + 1]
                         
@@ -94,19 +94,17 @@ class Buffer():
                     
                     # Set the start index to the beginning of the next episode
                     start_index = done_index + 1
-            
             samples[key] = torch.stack(episodes)
-        
-        # Add the memory mask to samples
-        samples["memory_mask"] = self.memory_mask
 
         # Flatten all samples and convert them to a tensor except memories and its memory mask
         self.samples_flat = {}
         for key, value in samples.items():
-            if not key == "memories" and not key == "memory_mask":
+            if not key == "memories":
                 self.samples_flat[key] = value.reshape(value.shape[0] * value.shape[1], *value.shape[2:])
             else:
                 self.samples_flat[key] = value
+        # Add the memory mask to samples
+        self.samples_flat["memory_mask"] = self.memory_mask
 
     def pad_sequence(self, sequence:torch.tensor, target_length:int) -> np.ndarray:
         """Pads a sequence to the target length using zeros.
@@ -146,7 +144,7 @@ class Buffer():
         # Prepare indices
         batch_size_with_padding = self.samples_flat["index_mask"].shape[0]
         # Create the indices for the mini batches
-        indices = torch.arange(0, batch_size_with_padding, dtype=torch.long)
+        indices = torch.range(0, batch_size_with_padding - 1).long()
         # Mask the indices that are not part of an episode
         indices = indices[self.samples_flat["index_mask"] == 1]
         # Shuffle the indices
@@ -162,16 +160,12 @@ class Buffer():
                     mini_batch_indices_ = torch.floor(mini_batch_indices / self.max_episode_length)
                     mini_batch["memories"] = value[mini_batch_indices_.long()].to(self.device)
                 elif key == "memory_mask":
-                    # mini_batch_indices_ = torch.remainder(mini_batch_indices, self.max_episode_length)
-                    # print(mini_batch["obs"].reshape(-1))
-                    # print(mini_batch_indices)
-                    # print(mini_batch_indices_)
-                    # mini_batch["memory_mask"] = value[mini_batch_indices_.long()].to(self.device)
-                    mini_batch["memory_mask"] = value[mini_batch["timesteps"]].to(self.device)
-                    print(mini_batch["timesteps"])
+                    mini_batch_indices_ = torch.remainder(mini_batch_indices, self.max_episode_length)
+                    mini_batch["memory_mask"] = value[mini_batch_indices_.long()].to(self.device)
                 else:
                     mini_batch_indices_ = self.samples_flat["indices"][mini_batch_indices]
                     mini_batch[key] = value[mini_batch_indices_].to(self.device)
+                    
             yield mini_batch
 
     def calc_advantages(self, last_value:torch.tensor, gamma:float, lamda:float) -> None:
