@@ -36,7 +36,7 @@ class Buffer():
         self.out_episode = torch.zeros((self.n_workers, max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         self.timestep = torch.zeros((self.n_workers, ), dtype=torch.uint8)
         self.index_mask = torch.ones((self.n_workers, self.worker_steps), dtype=torch.long)
-        self.index = torch.range(0, self.n_workers * self.worker_steps - 1).reshape(self.n_workers, self.worker_steps).long()
+        self.index = torch.arange(0, self.n_workers * self.worker_steps).reshape(self.n_workers, self.worker_steps).long()
 
         # Generate episodic memory mask
         self.memory_mask = torch.tril(torch.ones((max_episode_length, max_episode_length)))
@@ -144,7 +144,7 @@ class Buffer():
         # Prepare indices
         batch_size_with_padding = self.samples_flat["index_mask"].shape[0]
         # Create the indices for the mini batches
-        indices = torch.range(0, batch_size_with_padding - 1).long()
+        indices = torch.arange(0, batch_size_with_padding).long()
         # Mask the indices that are not part of an episode
         indices = indices[self.samples_flat["index_mask"] == 1]
         # Shuffle the indices
