@@ -60,7 +60,7 @@ class PPOTrainer:
         # Setup observation placeholder   
         self.obs = np.zeros((self.config["n_workers"],) + observation_space.shape, dtype=np.float32)
         # Setup timestep place
-        self.worker_current_episode_step = np.zeros((self.config["n_workers"], ), dtype=np.int_)
+        self.worker_current_episode_step = torch.zeros((self.config["n_workers"], ), dtype=torch.uint8)
 
         # Reset workers (i.e. environments)
         print("Step 5: Reset workers")
@@ -122,15 +122,17 @@ class PPOTrainer:
         episode_infos = []
 
         # Copy OUT episode memory to IN episode memory
-        self.buffer.in_episode  = np.copy(self.buffer.out_episode)
+        self.buffer.in_episode  = torch.clone(self.buffer.out_episode)
         # Track worker timesteps from the preivous update cycle
-        self.buffer.timestep = np.copy(self.worker_current_episode_step)
+        self.buffer.timestep = torch.clone(self.worker_current_episode_step)
 
         # Sample actions from the model and collect experiences for training
         for t in range(self.config["worker_steps"]):
             # Gradients can be omitted for sampling training data
             with torch.no_grad():
-                # Save the initial observations and recurrentl cell states
+                # Save timesteps
+                self.buffer.timesteps[:, t] = torch.clone(self.worker_current_episode_step)
+                # Save the initial observations
                 self.buffer.obs[:, t] = torch.tensor(self.obs)
                 # Forward the model to retrieve the policy, the states' value and the recurrent cell states
                 policy, value = self.model(torch.tensor(self.obs))
@@ -162,16 +164,16 @@ class PPOTrainer:
                     # Initial element of the memory has to be set to zero
                     # TODO for-loop is not necessary
                     for mem_layer in range(self.buffer.num_mem_layers):
-                        self.buffer.memories[w, t, mem_layer] = np.repeat(0.0, self.buffer.mem_layer_size) # TODO
+                        self.buffer.memories[w, t, mem_layer] = torch.tensor(np.repeat(0.0, self.buffer.mem_layer_size)) # TODO
                     # Clear OUT episode memory
-                    self.buffer.out_episode[w] = np.zeros((self.max_episode_length, self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=np.float32) # TODO -> use torch.tensor instead of numpy
+                    self.buffer.out_episode[w] = torch.zeros((self.max_episode_length, self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=torch.float32) # TODO -> use torch.tensor instead of numpy
                 else:
                     # Increment worker timestep
                     self.worker_current_episode_step[w] +=1
                     # Write episodic memories
                     # TODO this data is retrieved from the forward pass
-                    self.buffer.memories[w, t] = np.zeros((self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=np.float32) # TODO
-                    self.buffer.out_episode[w, self.worker_current_episode_step[w]] = np.zeros((self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=np.float32) # TODO
+                    self.buffer.memories[w, t] = torch.zeros((self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=torch.float32) # TODO
+                    self.buffer.out_episode[w, self.worker_current_episode_step[w]] = torch.zeros((self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=torch.float32) # TODO
                 # Store latest observations
                 self.obs[w] = obs
                             
