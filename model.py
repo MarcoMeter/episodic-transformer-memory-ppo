@@ -100,13 +100,13 @@ class ActorCriticModel(nn.Module):
         pos_embedding = torch.repeat_interleave(pos_embedding.unsqueeze(1), self.num_mem_layers, dim = 1)
         memories = memories + pos_embedding
         
-        h_res = h
         # Forward transformer blocks
         out_memories = []
         for i, block in enumerate(self.transformer_blocks):
             out_memories.append(h.detach())
+            h_res = h
             h = block(memories[:, :, i], memories[:, :, i], h.unsqueeze(1), memory_mask).squeeze() # args: value, key, query, mask
-        h = h + h_res
+            h = h + h_res
 
         # Decouple policy from value
         # Feed hidden layer (policy)
