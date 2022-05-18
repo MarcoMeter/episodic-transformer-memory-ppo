@@ -28,6 +28,8 @@ class PPOTrainer:
         self.lr_schedule = config["learning_rate_schedule"]
         self.beta_schedule = config["beta_schedule"]
         self.cr_schedule = config["clip_range_schedule"]
+        self.num_mem_layers = config["episodic_memory"]["num_layers"]
+        self.mem_layer_size = config["episodic_memory"]["layer_size"]
 
         # Setup Tensorboard Summary Writer
         if not os.path.exists("./summaries"):
@@ -59,8 +61,14 @@ class PPOTrainer:
 
         # Setup observation placeholder   
         self.obs = np.zeros((self.config["n_workers"],) + observation_space.shape, dtype=np.float32)
-        # Setup timestep place
-        self.worker_current_episode_step = torch.zeros((self.config["n_workers"], ), dtype=torch.uint8)
+        # Setup memory placeholder
+        self.memory = torch.zeros((self.config["n_workers"], self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
+        # Generate episodic memory mask
+        self.memory_mask = torch.tril(torch.ones((self.max_episode_length, self.max_episode_length)))
+        # Shift mask by one to account for the fact that for the first timestep the memory is empty
+        self.memory_mask = torch.cat((torch.zeros((1, self.max_episode_length)), self.memory_mask))[:-1]       
+        # Setup timestep placeholder
+        self.worker_current_episode_step = torch.zeros((self.config["n_workers"], ), dtype=torch.long)
 
         # Reset workers (i.e. environments)
         print("Step 5: Reset workers")
@@ -121,21 +129,18 @@ class PPOTrainer:
         """
         episode_infos = []
 
-        # Copy OUT episode memory to IN episode memory
-        self.buffer.in_episode  = torch.clone(self.buffer.out_episode)
-        # Track worker timesteps from the preivous update cycle
-        self.buffer.timestep = torch.clone(self.worker_current_episode_step)
-
         # Sample actions from the model and collect experiences for training
         for t in range(self.config["worker_steps"]):
             # Gradients can be omitted for sampling training data
             with torch.no_grad():
-                # Save timesteps
-                self.buffer.timesteps[:, t] = torch.clone(self.worker_current_episode_step)
                 # Save the initial observations
                 self.buffer.obs[:, t] = torch.tensor(self.obs)
+                # Save initial memory sequence
+                self.buffer.memories[:, t] = self.memory.clone()
+                # Save mask
+                self.buffer.memory_mask[:, t] = self.memory_mask[self.worker_current_episode_step]
                 # Forward the model to retrieve the policy, the states' value and the recurrent cell states
-                policy, value, memory = self.model(torch.tensor(self.obs), None, None)
+                policy, value, self.memory = self.model(torch.tensor(self.obs), self.memory, self.buffer.memory_mask[:, t])
                 self.buffer.values[:, t] = value
 
                 # Sample actions
@@ -160,25 +165,16 @@ class PPOTrainer:
                     worker.child.send(("reset", None))
                     # Get data from reset
                     obs = worker.child.recv()
-                    # Write episodic memories
-                    # Initial element of the memory has to be set to zero
-                    # TODO for-loop is not necessary
-                    for mem_layer in range(self.buffer.num_mem_layers):
-                        self.buffer.memories[w, t, mem_layer] = torch.tensor(np.repeat(0.0, self.buffer.mem_layer_size)) # TODO
-                    # Clear OUT episode memory
-                    self.buffer.out_episode[w] = torch.zeros((self.max_episode_length, self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=torch.float32) # TODO -> use torch.tensor instead of numpy
+                    # Reset episodic memory
+                    self.memory[w] = torch.zeros((self.max_episode_length, self.config["episodic_memory"]["num_layers"], self.config["episodic_memory"]["layer_size"]), dtype=torch.float32)
                 else:
                     # Increment worker timestep
                     self.worker_current_episode_step[w] +=1
-                    # Write episodic memories
-                    # TODO this data is retrieved from the forward pass
-                    self.buffer.memories[w, t] = torch.zeros((self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=torch.float32) # TODO
-                    self.buffer.out_episode[w, self.worker_current_episode_step[w]] = torch.zeros((self.buffer.num_mem_layers, self.buffer.mem_layer_size), dtype=torch.float32) # TODO
                 # Store latest observations
                 self.obs[w] = obs
                             
         # Calculate advantages
-        _, last_value, _ = self.model(torch.tensor(self.obs), None, None)
+        _, last_value, _ = self.model(torch.tensor(self.obs), self.memory, self.memory_mask[self.worker_current_episode_step])
         self.buffer.calc_advantages(last_value, self.config["gamma"], self.config["lamda"])
 
         return episode_infos
@@ -214,7 +210,7 @@ class PPOTrainer:
             {list} -- list of trainig statistics (e.g. loss)
         """
         # Forward model
-        policy, value, _ = self.model(samples["obs"], None, None)
+        policy, value, _ = self.model(samples["obs"], samples["memories"], samples["memory_mask"])
 
         # Compute policy surrogates to establish the policy loss
         normalized_advantage = (samples["advantages"] - samples["advantages"].mean()) / (samples["advantages"].std() + 1e-8)

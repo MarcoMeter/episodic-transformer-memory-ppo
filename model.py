@@ -67,7 +67,6 @@ class ActorCriticModel(nn.Module):
             {Categorical} -- Policy: Categorical distribution
             {torch.tensor} -- Value Function: Value
         """
-        memory = None
         # Set observation as input to the model
         h = obs
         # Forward observation encoder
@@ -93,7 +92,7 @@ class ActorCriticModel(nn.Module):
         # Head: Policy
         pi = Categorical(logits=self.policy(h_policy))
 
-        return pi, value, memory
+        return pi, value, memories
 
     def get_conv_output(self, shape:tuple) -> int:
         """Computes the output size of the convolutional layers by feeding a dummy tensor.
