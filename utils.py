@@ -12,7 +12,7 @@ def create_env(env_name:str):
         {env}: Returns the selected environment instance.
     """
     if env_name == "PocMemoryEnv":
-        return PocMemoryEnv(glob=False, freeze=True)
+        return PocMemoryEnv(glob=False, freeze=True, max_episode_steps=32)
     if env_name == "CartPole":
         return CartPole(mask_velocity=False)
     if env_name == "CartPoleMasked":

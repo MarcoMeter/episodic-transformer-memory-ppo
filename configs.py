@@ -14,6 +14,7 @@ def cartpole_masked_config():
             {
                 "num_layers": 1,
                 "layer_size": 128,
+                "num_heads": 4,
             },
         "learning_rate_schedule":
             {
@@ -54,6 +55,7 @@ def minigrid_config():
             {
                 "num_layers": 1,
                 "layer_size": 128,
+                "num_heads": 4,
             },
         "learning_rate_schedule":
             {
@@ -94,6 +96,7 @@ def poc_memory_env_config():
             {
                 "num_layers": 1,
                 "layer_size": 128,
+                "num_heads": 4,
             },
         "learning_rate_schedule":
             {
@@ -118,7 +121,7 @@ def poc_memory_env_config():
             }
     }
 
-def carpole_config():
+def cartpole_config():
     return {
         "env": "CartPole",
         "gamma": 0.99,
@@ -134,6 +137,7 @@ def carpole_config():
             {
                 "num_layers": 1,
                 "layer_size": 128,
+                "num_heads": 4,
             },
         "learning_rate_schedule":
             {

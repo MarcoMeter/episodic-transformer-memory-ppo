@@ -51,7 +51,7 @@ class PPOTrainer:
 
         # Init model
         print("Step 3: Init model and optimizer")
-        self.model = ActorCriticModel(self.config, observation_space, action_space_shape).to(self.device)
+        self.model = ActorCriticModel(self.config, observation_space, action_space_shape, self.max_episode_length).to(self.device)
         self.model.train()
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.lr_schedule["initial"])
 
@@ -140,8 +140,9 @@ class PPOTrainer:
                 # Save mask
                 self.buffer.memory_mask[:, t] = self.memory_mask[self.worker_current_episode_step]
                 # Forward the model to retrieve the policy, the states' value and the recurrent cell states
-                policy, value, self.memory = self.model(torch.tensor(self.obs), self.memory, self.buffer.memory_mask[:, t])
+                policy, value, memory = self.model(torch.tensor(self.obs), self.memory, self.buffer.memory_mask[:, t])
                 self.buffer.values[:, t] = value
+                self.memory[:, self.worker_current_episode_step] = memory
 
                 # Sample actions
                 action = policy.sample()
