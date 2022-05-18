@@ -3,9 +3,10 @@ import torch
 from torch import nn
 from torch.distributions import Categorical
 from torch.nn import functional as F
+from transformer import TransformerBlock, SinusoidalPosition
 
 class ActorCriticModel(nn.Module):
-    def __init__(self, config, observation_space, action_space_shape):
+    def __init__(self, config, observation_space, action_space_shape, max_episode_length):
         """Model setup
 
         Args:
@@ -15,7 +16,10 @@ class ActorCriticModel(nn.Module):
         """
         super().__init__()
         self.hidden_size = config["hidden_layer_size"]
+        self.memory_layer_size = config["episodic_memory"]["layer_size"]
+        self.num_mem_layers = config["episodic_memory"]["num_layers"]
         self.observation_space_shape = observation_space.shape
+        self.max_episode_length = max_episode_length
 
         # Observation encoder
         if len(self.observation_space_shape) > 1:
@@ -35,16 +39,23 @@ class ActorCriticModel(nn.Module):
             in_features_next_layer = observation_space.shape[0]
         
         # Hidden layer
-        self.lin_hidden = nn.Linear(in_features_next_layer, self.hidden_size)
+        self.lin_hidden = nn.Linear(in_features_next_layer, self.memory_layer_size)
         nn.init.orthogonal_(self.lin_hidden.weight, np.sqrt(2))
+
+        # Transformer Blocks
+        self.pos_emb = SinusoidalPosition(dim = self.memory_layer_size)
+        self.transformer_blocks = nn.ModuleList([
+            TransformerBlock(self.memory_layer_size, config["episodic_memory"]["num_heads"]) 
+            for _ in range(config["episodic_memory"]["num_layers"])])
+        # TODO init weights
 
         # Decouple policy from value
         # Hidden layer of the policy
-        self.lin_policy = nn.Linear(self.hidden_size, self.hidden_size)
+        self.lin_policy = nn.Linear(self.memory_layer_size, self.hidden_size)
         nn.init.orthogonal_(self.lin_policy.weight, np.sqrt(2))
 
         # Hidden layer of the value function
-        self.lin_value = nn.Linear(self.hidden_size, self.hidden_size)
+        self.lin_value = nn.Linear(self.memory_layer_size, self.hidden_size)
         nn.init.orthogonal_(self.lin_value.weight, np.sqrt(2))
 
         # Outputs / Model heads
@@ -67,7 +78,6 @@ class ActorCriticModel(nn.Module):
             {Categorical} -- Policy: Categorical distribution
             {torch.tensor} -- Value Function: Value
         """
-        memory = None
         # Set observation as input to the model
         h = obs
         # Forward observation encoder
@@ -83,6 +93,19 @@ class ActorCriticModel(nn.Module):
         # Feed hidden layer
         h = F.relu(self.lin_hidden(h))
 
+        # Transformer stuff
+        pos_embedding = self.pos_emb(memories)
+        pos_embedding = torch.repeat_interleave(pos_embedding.unsqueeze(1), self.num_mem_layers, dim = 1)
+        memories = memories + pos_embedding
+        
+        h_res = h
+        # Forward transformer blocks
+        out_memories = []
+        for i, block in enumerate(self.transformer_blocks):
+            out_memories.append(h.detach())
+            h = block(memories[:, :, i], memories[:, :, i], h.unsqueeze(1), memory_mask).squeeze() # args: value, key, query, mask
+        h = h + h_res
+
         # Decouple policy from value
         # Feed hidden layer (policy)
         h_policy = F.relu(self.lin_policy(h))
@@ -93,7 +116,8 @@ class ActorCriticModel(nn.Module):
         # Head: Policy
         pi = Categorical(logits=self.policy(h_policy))
 
-        return pi, value, memory
+        memories = torch.stack(out_memories, dim=1)
+        return pi, value, memories
 
     def get_conv_output(self, shape:tuple) -> int:
         """Computes the output size of the convolutional layers by feeding a dummy tensor.
