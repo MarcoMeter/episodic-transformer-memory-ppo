@@ -25,6 +25,7 @@ class PPOTrainer:
         self.config = config
         self.device = device
         self.run_id = run_id
+        self.num_workers = config["n_workers"]
         self.lr_schedule = config["learning_rate_schedule"]
         self.beta_schedule = config["beta_schedule"]
         self.cr_schedule = config["clip_range_schedule"]
@@ -57,18 +58,18 @@ class PPOTrainer:
 
         # Init workers
         print("Step 4: Init environment workers")
-        self.workers = [Worker(self.config["env"]) for w in range(self.config["n_workers"])]
+        self.workers = [Worker(self.config["env"]) for w in range(self.num_workers)]
 
         # Setup observation placeholder   
-        self.obs = np.zeros((self.config["n_workers"],) + observation_space.shape, dtype=np.float32)
+        self.obs = np.zeros((self.num_workers,) + observation_space.shape, dtype=np.float32)
         # Setup memory placeholder
-        self.memory = torch.zeros((self.config["n_workers"], self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
+        self.memory = torch.zeros((self.num_workers, self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         # Generate episodic memory mask
         self.memory_mask = torch.tril(torch.ones((self.max_episode_length, self.max_episode_length)))
         # Shift mask by one to account for the fact that for the first timestep the memory is empty
         self.memory_mask = torch.cat((torch.zeros((1, self.max_episode_length)), self.memory_mask))[:-1]       
         # Setup timestep placeholder
-        self.worker_current_episode_step = torch.zeros((self.config["n_workers"], ), dtype=torch.long)
+        self.worker_current_episode_step = torch.zeros((self.num_workers, ), dtype=torch.long)
 
         # Reset workers (i.e. environments)
         print("Step 5: Reset workers")
@@ -167,7 +168,7 @@ class PPOTrainer:
                     # Get data from reset
                     obs = worker.child.recv()
                     # Reset episodic memory
-                    self.memory[w] = torch.zeros((self.max_episode_length, self.config["episodic_memory"]["num_layers"], self.config["episodic_memory"]["layer_size"]), dtype=torch.float32)
+                    self.memory[w] = torch.zeros((self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
                 else:
                     # Increment worker timestep
                     self.worker_current_episode_step[w] +=1

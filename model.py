@@ -18,6 +18,8 @@ class ActorCriticModel(nn.Module):
         self.hidden_size = config["hidden_layer_size"]
         self.memory_layer_size = config["episodic_memory"]["layer_size"]
         self.num_mem_layers = config["episodic_memory"]["num_layers"]
+        self.num_heads = config["episodic_memory"]["num_heads"]
+        self.num_mem_layers = config["episodic_memory"]["num_layers"]
         self.observation_space_shape = observation_space.shape
         self.max_episode_length = max_episode_length
 
@@ -45,8 +47,8 @@ class ActorCriticModel(nn.Module):
         # Transformer Blocks
         self.pos_emb = SinusoidalPosition(dim = self.memory_layer_size)
         self.transformer_blocks = nn.ModuleList([
-            TransformerBlock(self.memory_layer_size, config["episodic_memory"]["num_heads"]) 
-            for _ in range(config["episodic_memory"]["num_layers"])])
+            TransformerBlock(self.memory_layer_size, self.num_heads) 
+            for _ in range(self.num_mem_layers)])
         # TODO init weights
 
         # Decouple policy from value
@@ -93,7 +95,7 @@ class ActorCriticModel(nn.Module):
         # Feed hidden layer
         h = F.relu(self.lin_hidden(h))
 
-        # Transformer stuff
+        # Transformer positional encoding
         pos_embedding = self.pos_emb(memories)
         pos_embedding = torch.repeat_interleave(pos_embedding.unsqueeze(1), self.num_mem_layers, dim = 1)
         memories = memories + pos_embedding
