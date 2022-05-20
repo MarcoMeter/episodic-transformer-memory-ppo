@@ -104,9 +104,7 @@ class ActorCriticModel(nn.Module):
         out_memories = []
         for i, block in enumerate(self.transformer_blocks):
             out_memories.append(h.detach())
-            h_res = h
             h = block(memories[:, :, i], memories[:, :, i], h.unsqueeze(1), memory_mask).squeeze() # args: value, key, query, mask
-            h = h + h_res
 
         # Decouple policy from value
         # Feed hidden layer (policy)
