@@ -75,6 +75,7 @@ class SelfAttention(nn.Module):
     def visualize_coef(self, attention_coef, mask):
         if attention_coef.requires_grad:
             return
+        attention_coef = attention_coef.flatten()
         plt.bar(range(len(attention_coef)), attention_coef)
         plt.ylim(top = 1)
         plt.title("Attention Coefficients of worker 0 at step " + str(mask.sum().item()))

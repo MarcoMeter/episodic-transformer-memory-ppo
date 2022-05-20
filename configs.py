@@ -85,7 +85,7 @@ def poc_memory_env_config():
         "env": "PocMemoryEnv",
         "gamma": 0.99,
         "lamda": 0.95,
-        "updates": 200,
+        "updates": 30,
         "epochs": 4,
         "n_workers": 16,
         "worker_steps": 128,
