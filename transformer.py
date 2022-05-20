@@ -1,12 +1,14 @@
 import torch
 from torch import QInt32Storage, nn
 from einops import rearrange, repeat
+import matplotlib.pyplot as plt
 
 class SelfAttention(nn.Module):
-    def __init__(self, embed_size, num_heads):
+    def __init__(self, embed_size, num_heads, visualize=False):
         super(SelfAttention, self).__init__()
         self.embed_size = embed_size
         self.num_heads = num_heads
+        self.visualize = visualize
         self.head_size = embed_size // num_heads
 
         assert (
@@ -51,6 +53,10 @@ class SelfAttention(nn.Module):
         # better stability
         attention = torch.softmax(energy / (self.embed_size ** (1 / 2)), dim=3)
         # attention shape: (N, heads, query_len, key_len)
+        # Visualize attention coefficients of worker 0
+        # if visualize is True
+        if self.visualize:
+            self.visualize_coef(attention[0].squeeze(0).squeeze(0), mask[0])
 
         out = torch.einsum("nhql,nlhd->nqhd", [attention, values]).reshape(
             N, query_len, self.num_heads * self.head_size
@@ -65,11 +71,22 @@ class SelfAttention(nn.Module):
         # (N, query_len, embed_size)
 
         return out
+    
+    def visualize_coef(self, attention_coef, mask):
+        if attention_coef.requires_grad:
+            return
+        plt.bar(range(len(attention_coef)), attention_coef)
+        plt.ylim(top = 1)
+        plt.title("Attention Coefficients of worker 0 at step " + str(mask.sum().item()))
+        plt.draw()
+        plt.pause(0.0001)
+        plt.clf()
+        
 
 class TransformerBlock(nn.Module):
-    def __init__(self, embed_size, num_heads, forward_expansion = 1):
+    def __init__(self, embed_size, num_heads, forward_expansion = 1, visualize_coef=False):
         super(TransformerBlock, self).__init__()
-        self.attention = SelfAttention(embed_size, num_heads)
+        self.attention = SelfAttention(embed_size, num_heads, visualize_coef)
         self.norm1 = nn.LayerNorm(embed_size)
         self.norm2 = nn.LayerNorm(embed_size)
 

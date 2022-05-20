@@ -85,7 +85,7 @@ def poc_memory_env_config():
         "env": "PocMemoryEnv",
         "gamma": 0.99,
         "lamda": 0.95,
-        "updates": 30,
+        "updates": 200,
         "epochs": 4,
         "n_workers": 16,
         "worker_steps": 128,
@@ -96,7 +96,7 @@ def poc_memory_env_config():
             {
                 "num_layers": 1,
                 "layer_size": 128,
-                "num_heads": 4,
+                "num_heads": 1,
             },
         "learning_rate_schedule":
             {

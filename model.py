@@ -6,7 +6,7 @@ from torch.nn import functional as F
 from transformer import TransformerBlock, SinusoidalPosition
 
 class ActorCriticModel(nn.Module):
-    def __init__(self, config, observation_space, action_space_shape, max_episode_length):
+    def __init__(self, config, observation_space, action_space_shape, max_episode_length, visualize_coef = True):
         """Model setup
 
         Args:
@@ -47,7 +47,7 @@ class ActorCriticModel(nn.Module):
         # Transformer Blocks
         self.pos_emb = SinusoidalPosition(dim = self.memory_layer_size)
         self.transformer_blocks = nn.ModuleList([
-            TransformerBlock(self.memory_layer_size, self.num_heads) 
+            TransformerBlock(self.memory_layer_size, self.num_heads, visualize_coef = visualize_coef) 
             for _ in range(self.num_mem_layers)])
         # TODO init weights
 
