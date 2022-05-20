@@ -92,7 +92,7 @@ class PocMemoryEnv():
         info = None
         success = False
         
-        if self.max_episode_steps > 0 and self._step_count > self.max_episode_steps:
+        if self.max_episode_steps > 0 and self._step_count >= self.max_episode_steps - 1:
             done = True
 
         if self._num_show_steps > self._step_count:
