@@ -96,9 +96,9 @@ class ActorCriticModel(nn.Module):
         h = F.relu(self.lin_hidden(h))
 
         # Transformer positional encoding
-        # pos_embedding = self.pos_emb(memories)
-        # pos_embedding = torch.repeat_interleave(pos_embedding.unsqueeze(1), self.num_mem_layers, dim = 1)
-        # memories = memories + pos_embedding
+        pos_embedding = self.pos_emb(memories)
+        pos_embedding = torch.repeat_interleave(pos_embedding.unsqueeze(1), self.num_mem_layers, dim = 1)
+        memories = memories + pos_embedding
         
         # Forward transformer blocks
         out_memories = []

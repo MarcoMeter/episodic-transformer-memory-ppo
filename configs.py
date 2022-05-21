@@ -96,7 +96,7 @@ def poc_memory_env_config():
             {
                 "num_layers": 1,
                 "layer_size": 128,
-                "num_heads": 1,
+                "num_heads": 4,
             },
         "learning_rate_schedule":
             {
