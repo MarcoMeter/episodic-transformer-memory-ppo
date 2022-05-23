@@ -27,7 +27,7 @@ def main():
         torch.set_default_tensor_type("torch.FloatTensor")
 
     # Initialize the PPO trainer and commence training
-    trainer = PPOTrainer(poc_memory_env_config(), run_id=run_id, device=device)
+    trainer = PPOTrainer(cartpole_masked_config(), run_id=run_id, device=device)
     trainer.run_training()
     trainer.close()
 
