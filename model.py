@@ -139,7 +139,7 @@ class ActorCriticModel(nn.Module):
         """Computes the norm of the gradients of the model.
         
         Returns:
-            {dict} -- Dictionary of gradients norms grouped by name
+            {dict} -- Dictionary of gradient norms grouped by name
         """
         grads = {}
         if len(self.observation_space_shape) > 1:
