@@ -136,7 +136,7 @@ class ActorCriticModel(nn.Module):
         return int(np.prod(o.size()))
     
     def get_grad_norm(self):
-        """Computes the norm of the gradients of the model.
+        """Returns the norm of the gradients of the model.
         
         Returns:
             {dict} -- Dictionary of gradient norms grouped by name
