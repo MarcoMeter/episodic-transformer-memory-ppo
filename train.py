@@ -11,7 +11,7 @@ def main():
         train.py --help
     
     Options:
-        --config=<path>            Path to the config file [default: ./configs/cartpole.yaml]
+        --config=<path>            Path to the config file [default: ./configs/poc_memory_env.yaml]
         --run-id=<path>            Specifies the tag for saving the tensorboard summary [default: run].
         --cpu                      Force training on CPU [default: False]
     """
