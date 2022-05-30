@@ -137,6 +137,8 @@ class ActorCriticModel(nn.Module):
     
     def get_grad_norm(self):
         """Computes the norm of the gradients of the model.
+        Returns:
+            {dict} -- Dictionary of gradients norms grouped by name
         """
         grads = {}
         if len(self.observation_space_shape) > 1:
@@ -152,9 +154,17 @@ class ActorCriticModel(nn.Module):
           
         return grads
     
-    def _calc_grad_norm(self, module_list:list):
+    def _calc_grad_norm(self, modules:list):
+        """Computes the norm of the gradients of the given modules.
+
+        Args:
+            modules {list}: List of modules to compute the norm of the gradients of.
+
+        Returns:
+            {float} -- Norm of the gradients of the given modules. 
+        """
         grads = []
-        for module in module_list:
+        for module in modules:
             for name, parameter in module.named_parameters():
                 grads.append(parameter.grad.view(-1))
         return torch.linalg.norm(torch.cat(grads)).item() if len(grads) > 0 else None
