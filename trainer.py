@@ -98,7 +98,7 @@ class PPOTrainer:
             self.buffer.prepare_batch_dict()
 
             # Train epochs
-            training_stats = self._train_epochs(learning_rate, clip_range, beta)
+            training_stats, grad_info = self._train_epochs(learning_rate, clip_range, beta)
             training_stats = np.mean(training_stats, axis=0)
 
             # Store recent episode infos
@@ -117,6 +117,7 @@ class PPOTrainer:
             print(result)
 
             # Write training statistics to tensorboard
+            self._write_gradient_summary(grad_info, update)
             self._write_training_summary(update, training_stats, episode_result)
 
         # Save the trained model at the end of the training
@@ -191,13 +192,15 @@ class PPOTrainer:
             
         Returns:
             {list} -- Training statistics of one training epoch"""
-        train_info = []
+        train_info, grad_info = [], {}
         for _ in range(self.config["epochs"]):
             # Retrieve the to be trained mini batches via a generator
             mini_batch_generator = self.buffer.mini_batch_generator()
             for mini_batch in mini_batch_generator:
                 train_info.append(self._train_mini_batch(mini_batch, learning_rate, clip_range, beta))
-        return train_info
+                for key, value in self.model.get_grad_norm().items():
+                    grad_info.setdefault(key, []).append(value)
+        return train_info, grad_info
 
     def _train_mini_batch(self, samples:dict, learning_rate:float, clip_range:float, beta:float) -> list:
         """Uses one mini batch to optimize the model.
@@ -217,7 +220,8 @@ class PPOTrainer:
         # Compute policy surrogates to establish the policy loss
         normalized_advantage = (samples["advantages"] - samples["advantages"].mean()) / (samples["advantages"].std() + 1e-8)
         log_probs = policy.log_prob(samples["actions"])
-        ratio = torch.exp(log_probs - samples["log_probs"])
+        log_ratio = log_probs - samples["log_probs"]
+        ratio = torch.exp(log_ratio)
         surr1 = ratio * normalized_advantage
         surr2 = torch.clamp(ratio, 1.0 - clip_range, 1.0 + clip_range) * normalized_advantage
         policy_loss = torch.min(surr1, surr2)
@@ -243,10 +247,16 @@ class PPOTrainer:
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
         self.optimizer.step()
 
+        # Monitor additional training stats
+        approx_kl = (ratio - 1.0) - log_ratio # http://joschu.net/blog/kl-approx.html
+        clip_fraction = (abs((ratio - 1.0)) > clip_range).float().mean()
+
         return [policy_loss.cpu().data.numpy(),
                 vf_loss.cpu().data.numpy(),
                 loss.cpu().data.numpy(),
-                entropy_bonus.cpu().data.numpy()]
+                entropy_bonus.cpu().data.numpy(),
+                approx_kl.mean().cpu().data.numpy(),
+                clip_fraction.cpu().data.numpy()]
 
     def _write_training_summary(self, update, training_stats, episode_result) -> None:
         """Writes to an event file based on the run-id argument.
@@ -266,6 +276,12 @@ class PPOTrainer:
         self.writer.add_scalar("losses/entropy", training_stats[3], update)
         self.writer.add_scalar("training/value_mean", torch.mean(self.buffer.values), update)
         self.writer.add_scalar("training/advantage_mean", torch.mean(self.buffer.advantages), update)
+        self.writer.add_scalar("other/clip_fraction", training_stats[4], update)
+        self.writer.add_scalar("other/kl", training_stats[5], update)
+        
+    def _write_gradient_summary(self, grad_info, update):
+        for key, value in grad_info.items():
+            self.writer.add_scalar("gradients/" + key, np.mean(value), update)
 
     @staticmethod
     def _process_episode_info(episode_info:list) -> dict:

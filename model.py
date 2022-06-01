@@ -134,3 +134,38 @@ class ActorCriticModel(nn.Module):
         o = self.conv2(o)
         o = self.conv3(o)
         return int(np.prod(o.size()))
+    
+    def get_grad_norm(self):
+        """Returns the norm of the gradients of the model.
+        
+        Returns:
+            {dict} -- Dictionary of gradient norms grouped by layer name
+        """
+        grads = {}
+        if len(self.observation_space_shape) > 1:
+            grads["encoder"] = self._calc_grad_norm([self.conv1, self.conv2, self.conv3])  
+            
+        grads["linear_layer"] = self._calc_grad_norm([self.lin_hidden])
+        
+        for i, block in enumerate(self.transformer_blocks):
+            grads["transformer_block_" + str(i)] = self._calc_grad_norm([block])
+             
+        grads["policy"] = self._calc_grad_norm([self.lin_policy, self.policy])
+        grads["value"] = self._calc_grad_norm([self.lin_value, self.value])
+          
+        return grads
+    
+    def _calc_grad_norm(self, modules:list):
+        """Computes the norm of the gradients of the given modules.
+
+        Args:
+            modules {list}: List of modules to compute the norm of the gradients of.
+
+        Returns:
+            {float} -- Norm of the gradients of the given modules. 
+        """
+        grads = []
+        for module in modules:
+            for name, parameter in module.named_parameters():
+                grads.append(parameter.grad.view(-1))
+        return torch.linalg.norm(torch.cat(grads)).item() if len(grads) > 0 else None
