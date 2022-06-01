@@ -117,7 +117,7 @@ class PPOTrainer:
             print(result)
 
             # Write training statistics to tensorboard
-            self._write_gradient_summary(grad_info, update)
+            self._write_gradient_summary(update, grad_info)
             self._write_training_summary(update, training_stats, episode_result)
 
         # Save the trained model at the end of the training
@@ -279,7 +279,13 @@ class PPOTrainer:
         self.writer.add_scalar("other/clip_fraction", training_stats[4], update)
         self.writer.add_scalar("other/kl", training_stats[5], update)
         
-    def _write_gradient_summary(self, grad_info, update):
+    def _write_gradient_summary(self, update, grad_info):
+        """Adds gradient statistics to the tensorboard event file.
+
+        Args:
+            update {int}: Current PPO Update
+            grad_info {dict} -- Gradient statistics: 
+        """
         for key, value in grad_info.items():
             self.writer.add_scalar("gradients/" + key, np.mean(value), update)
 

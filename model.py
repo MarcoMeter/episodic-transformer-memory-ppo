@@ -143,19 +143,19 @@ class ActorCriticModel(nn.Module):
         """
         grads = {}
         if len(self.observation_space_shape) > 1:
-            grads["encoder"] = self._calc_grad_norm([self.conv1, self.conv2, self.conv3])  
+            grads["encoder"] = self._calc_grad_norm(self.conv1, self.conv2, self.conv3)  
             
-        grads["linear_layer"] = self._calc_grad_norm([self.lin_hidden])
+        grads["linear_layer"] = self._calc_grad_norm(self.lin_hidden)
         
         for i, block in enumerate(self.transformer_blocks):
-            grads["transformer_block_" + str(i)] = self._calc_grad_norm([block])
+            grads["transformer_block_" + str(i)] = self._calc_grad_norm(block)
              
-        grads["policy"] = self._calc_grad_norm([self.lin_policy, self.policy])
-        grads["value"] = self._calc_grad_norm([self.lin_value, self.value])
+        grads["policy"] = self._calc_grad_norm(self.lin_policy, self.policy)
+        grads["value"] = self._calc_grad_norm(self.lin_value, self.value)
           
         return grads
     
-    def _calc_grad_norm(self, modules:list):
+    def _calc_grad_norm(self, *modules):
         """Computes the norm of the gradients of the given modules.
 
         Args:
