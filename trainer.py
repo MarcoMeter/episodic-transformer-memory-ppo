@@ -220,7 +220,8 @@ class PPOTrainer:
         # Compute policy surrogates to establish the policy loss
         normalized_advantage = (samples["advantages"] - samples["advantages"].mean()) / (samples["advantages"].std() + 1e-8)
         log_probs = policy.log_prob(samples["actions"])
-        ratio = torch.exp(log_probs - samples["log_probs"])
+        log_ratio = log_probs - samples["log_probs"]
+        ratio = torch.exp(log_ratio)
         surr1 = ratio * normalized_advantage
         surr2 = torch.clamp(ratio, 1.0 - clip_range, 1.0 + clip_range) * normalized_advantage
         policy_loss = torch.min(surr1, surr2)
@@ -246,10 +247,16 @@ class PPOTrainer:
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
         self.optimizer.step()
 
+        # Monitor additional training stats
+        approx_kl = (ratio - 1.0) - log_ratio # http://joschu.net/blog/kl-approx.html
+        clip_fraction = (abs((ratio - 1.0)) > clip_range).float().mean()
+
         return [policy_loss.cpu().data.numpy(),
                 vf_loss.cpu().data.numpy(),
                 loss.cpu().data.numpy(),
-                entropy_bonus.cpu().data.numpy()]
+                entropy_bonus.cpu().data.numpy(),
+                approx_kl.mean().cpu().data.numpy(),
+                clip_fraction.cpu().data.numpy()]
 
     def _write_training_summary(self, update, training_stats, episode_result) -> None:
         """Writes to an event file based on the run-id argument.
@@ -269,6 +276,8 @@ class PPOTrainer:
         self.writer.add_scalar("losses/entropy", training_stats[3], update)
         self.writer.add_scalar("training/value_mean", torch.mean(self.buffer.values), update)
         self.writer.add_scalar("training/advantage_mean", torch.mean(self.buffer.advantages), update)
+        self.writer.add_scalar("other/clip_fraction", training_stats[4], update)
+        self.writer.add_scalar("other/kl", training_stats[5], update)
         
     def _write_gradient_summary(self, grad_info, update):
         for key, value in grad_info.items():
