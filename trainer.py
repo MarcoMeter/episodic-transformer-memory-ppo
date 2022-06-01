@@ -284,7 +284,7 @@ class PPOTrainer:
 
         Args:
             update {int}: Current PPO Update
-            grad_info {dict} -- Gradient statistics: 
+            grad_info {dict} -- Gradient statistics
         """
         for key, value in grad_info.items():
             self.writer.add_scalar("gradients/" + key, np.mean(value), update)
