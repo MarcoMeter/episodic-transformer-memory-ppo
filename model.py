@@ -159,7 +159,7 @@ class ActorCriticModel(nn.Module):
         """Computes the norm of the gradients of the given modules.
 
         Args:
-            modules {list}: List of modules to compute the norm of the gradients of.
+            modules {list} -- List of modules to compute the norm of the gradients of.
 
         Returns:
             {float} -- Norm of the gradients of the given modules. 

@@ -283,7 +283,7 @@ class PPOTrainer:
         """Adds gradient statistics to the tensorboard event file.
 
         Args:
-            update {int}: Current PPO Update
+            update {int} -- Current PPO Update
             grad_info {dict} -- Gradient statistics
         """
         for key, value in grad_info.items():
