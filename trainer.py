@@ -144,7 +144,9 @@ class PPOTrainer:
                 # Forward the model to retrieve the policy, the states' value and the recurrent cell states
                 policy, value, memory = self.model(torch.tensor(self.obs), self.memory, self.buffer.memory_mask[:, t])
                 self.buffer.values[:, t] = value
-                self.memory[:, self.worker_current_episode_step] = memory
+                # Set memory 
+                for w in range(self.num_workers):
+                    self.memory[w, self.worker_current_episode_step[w]] = memory[w]
 
                 # Sample actions
                 action = policy.sample()
