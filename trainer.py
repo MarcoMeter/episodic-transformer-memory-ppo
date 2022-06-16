@@ -70,6 +70,8 @@ class PPOTrainer:
         self.memory_mask = torch.cat((torch.zeros((1, self.max_episode_length)), self.memory_mask))[:-1]       
         # Setup timestep placeholder
         self.worker_current_episode_step = torch.zeros((self.num_workers, ), dtype=torch.long)
+        # worker ids
+        self.worker_ids = range(self.num_workers)
 
         # Reset workers (i.e. environments)
         print("Step 5: Reset workers")
@@ -145,8 +147,7 @@ class PPOTrainer:
                 policy, value, memory = self.model(torch.tensor(self.obs), self.memory, self.buffer.memory_mask[:, t])
                 self.buffer.values[:, t] = value
                 # Set memory 
-                for w in range(self.num_workers):
-                    self.memory[w, self.worker_current_episode_step[w]] = memory[w]
+                self.memory[self.worker_ids, self.worker_current_episode_step] = memory
 
                 # Sample actions
                 action = policy.sample()
