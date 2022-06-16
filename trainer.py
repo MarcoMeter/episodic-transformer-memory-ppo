@@ -70,7 +70,7 @@ class PPOTrainer:
         self.memory_mask = torch.cat((torch.zeros((1, self.max_episode_length)), self.memory_mask))[:-1]       
         # Setup timestep placeholder
         self.worker_current_episode_step = torch.zeros((self.num_workers, ), dtype=torch.long)
-        # worker ids
+        # Worker ids
         self.worker_ids = range(self.num_workers)
 
         # Reset workers (i.e. environments)
