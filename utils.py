@@ -2,7 +2,7 @@ from environments.cartpole_env import CartPole
 from environments.minigrid_env import Minigrid
 from environments.poc_memory_env import PocMemoryEnv
 
-def create_env(env_name:str):
+def create_env(config:dict):
     """Initializes an environment based on the provided environment name.
     
     Args:
@@ -11,14 +11,14 @@ def create_env(env_name:str):
     Returns:
         {env}: Returns the selected environment instance.
     """
-    if env_name == "PocMemoryEnv":
+    if config["env"] == "PocMemoryEnv":
         return PocMemoryEnv(glob=False, freeze=True, max_episode_steps=32)
-    if env_name == "CartPole":
+    if config["env"] == "CartPole":
         return CartPole(mask_velocity=False)
-    if env_name == "CartPoleMasked":
+    if config["env"] == "CartPoleMasked":
         return CartPole(mask_velocity=True)
-    if env_name == "Minigrid":
-        return Minigrid()
+    if config["env"] == "Minigrid":
+        return Minigrid(config["name"])
 
 def polynomial_decay(initial:float, final:float, max_decay_steps:int, power:float, current_step:int) -> float:
     """Decays hyperparameters polynomially. If power is set to 1.0, the decay behaves linearly. 

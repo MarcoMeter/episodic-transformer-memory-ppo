@@ -1,4 +1,6 @@
 "env": "Minigrid"
+"name": "MiniGrid-MemoryS9-v0"
+# "name": "MiniGrid-KeyCorridorS3R1-v0"
 "gamma": 0.99
 "lamda": 0.95
 "updates": 500

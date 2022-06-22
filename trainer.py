@@ -40,7 +40,7 @@ class PPOTrainer:
 
         # Init dummy environment and retrieve action and observation spaces
         print("Step 1: Init dummy environment")
-        dummy_env = create_env(self.config["env"])
+        dummy_env = create_env(self.config)
         observation_space = dummy_env.observation_space
         action_space_shape = (dummy_env.action_space.n,)
         self.max_episode_length = dummy_env.max_episode_steps
@@ -58,7 +58,7 @@ class PPOTrainer:
 
         # Init workers
         print("Step 4: Init environment workers")
-        self.workers = [Worker(self.config["env"]) for w in range(self.num_workers)]
+        self.workers = [Worker(self.config) for w in range(self.num_workers)]
 
         # Setup observation placeholder   
         self.obs = np.zeros((self.num_workers,) + observation_space.shape, dtype=np.float32)

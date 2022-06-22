@@ -2,7 +2,7 @@ import multiprocessing
 import multiprocessing.connection
 from utils import create_env
 
-def worker_process(remote: multiprocessing.connection.Connection, env_name:str) -> None:
+def worker_process(remote: multiprocessing.connection.Connection, config:dict) -> None:
     """Executes the threaded interface to the environment.
     
     Args:
@@ -11,7 +11,7 @@ def worker_process(remote: multiprocessing.connection.Connection, env_name:str) 
     """
     # Spawn environment
     try:
-        env = create_env(env_name)
+        env = create_env(config)
     except KeyboardInterrupt:
         pass
 
