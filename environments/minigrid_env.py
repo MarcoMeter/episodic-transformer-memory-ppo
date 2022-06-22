@@ -6,18 +6,21 @@ from gym import spaces
 from gym_minigrid.wrappers import ViewSizeWrapper
 
 class Minigrid:
-    def __init__(self, name, max_episode_steps = 32):
+    def __init__(self, name):
         self._env = gym.make(name)
         # Decrease the agent's view size to raise the agent's memory challenge
         # On MiniGrid-Memory-S7-v0, the default view size is too large to actually demand a recurrent policy.
         if "Memory" in name:
-            viewsize = 3
-            hw = 84
+            view_size = 3
+            self.tile_size = 28
+            hw = view_size * self.tile_size
+            self.max_episode_steps = 48
         else:
-            viewsize = 7
-            hw = 56
-        self._env = ViewSizeWrapper(self._env, viewsize)
-        self.max_episode_steps = max_episode_steps
+            view_size = 7
+            self.tile_size = 8
+            hw = view_size * self.tile_size
+            self.max_episode_steps = 64
+        self._env = ViewSizeWrapper(self._env, view_size)
         self._observation_space = spaces.Box(
                 low = 0,
                 high = 1.0,
@@ -39,7 +42,7 @@ class Minigrid:
         self.t = 0
         self._rewards = []
         obs = self._env.reset()
-        obs = self._env.get_obs_render(obs["image"], tile_size=28).astype(np.float32) / 255.
+        obs = self._env.get_obs_render(obs["image"], tile_size=self.tile_size).astype(np.float32) / 255.
         # To conform PyTorch requirements, the channel dimension has to be first.
         obs = np.swapaxes(obs, 0, 2)
         obs = np.swapaxes(obs, 2, 1)
@@ -48,7 +51,7 @@ class Minigrid:
     def step(self, action):
         obs, reward, done, info = self._env.step(action)
         self._rewards.append(reward)
-        obs = self._env.get_obs_render(obs["image"], tile_size=28).astype(np.float32) / 255.
+        obs = self._env.get_obs_render(obs["image"], tile_size=self.tile_size).astype(np.float32) / 255.
 
         if self.t == self.max_episode_steps - 1:
             done = True
