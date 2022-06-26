@@ -34,8 +34,6 @@ class Buffer():
         self.memories = []
         self.memory_mask = torch.zeros((self.n_workers, self.worker_steps, self.max_episode_length), dtype=torch.long)
         self.memory_index = torch.zeros((self.n_workers, self.worker_steps), dtype=torch.long)
-        # Episodic memory buffer tensors
-        self.memories_arr = torch.zeros((self.n_workers, self.worker_steps, self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
 
     def prepare_batch_dict(self) -> None:
         """Flattens the training samples and stores them inside a dictionary. Due to using a recurrent policy,
