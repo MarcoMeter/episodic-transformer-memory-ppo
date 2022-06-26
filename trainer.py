@@ -144,8 +144,6 @@ class PPOTrainer:
             with torch.no_grad():
                 # Save the initial observations
                 self.buffer.obs[:, t] = torch.tensor(self.obs)
-                # Save initial memory sequence
-                self.buffer.memories_arr[:, t] = self.memory.clone()
                 # Save mask
                 self.buffer.memory_mask[:, t] = self.memory_mask[self.worker_current_episode_step]
                 # Forward the model to retrieve the policy, the states' value and the recurrent cell states
