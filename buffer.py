@@ -30,9 +30,12 @@ class Buffer():
         self.log_probs = torch.zeros((self.n_workers, self.worker_steps))
         self.values = torch.zeros((self.n_workers, self.worker_steps))
         self.advantages = torch.zeros((self.n_workers, self.worker_steps))
-        # Episodic memory buffer tensors
-        self.memories = torch.zeros((self.n_workers, self.worker_steps, self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
+        # Episodic memory index buffer
+        self.memories = []
         self.memory_mask = torch.zeros((self.n_workers, self.worker_steps, self.max_episode_length), dtype=torch.long)
+        self.memory_index = torch.zeros((self.n_workers, self.worker_steps), dtype=torch.long)
+        # Episodic memory buffer tensors
+        self.memories_arr = torch.zeros((self.n_workers, self.worker_steps, self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
 
     def prepare_batch_dict(self) -> None:
         """Flattens the training samples and stores them inside a dictionary. Due to using a recurrent policy,
@@ -45,9 +48,11 @@ class Buffer():
             "log_probs": self.log_probs,
             "advantages": self.advantages,
             "obs": self.obs,
-            "memories": self.memories,
-            "memory_mask": self.memory_mask
+            "memory_index": self.memory_index,
+            "memory_mask": self.memory_mask,
         }
+        # Convert the memories to a tensor
+        self.memories = torch.stack(self.memories, dim=0)
 
         # Flatten all samples and convert them to a tensor except memories and its memory mask
         self.samples_flat = {}
@@ -62,6 +67,7 @@ class Buffer():
         Yields:
             {dict} -- Mini batch data for training
         """
+        
         # Prepare indices (shuffle)
         indices = torch.randperm(self.batch_size)
         mini_batch_size = self.batch_size // self.n_mini_batches
@@ -71,7 +77,10 @@ class Buffer():
             mini_batch_indices = indices[start: end]
             mini_batch = {}
             for key, value in self.samples_flat.items():
-                mini_batch[key] = value[mini_batch_indices].to(self.device)
+                if key == "memory_index":
+                    mini_batch["memories"] = self.memories[value[mini_batch_indices]]
+                else:
+                    mini_batch[key] = value[mini_batch_indices].to(self.device)
             yield mini_batch
 
     def calc_advantages(self, last_value:torch.tensor, gamma:float, lamda:float) -> None:
