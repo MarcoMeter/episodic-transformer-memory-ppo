@@ -26,7 +26,7 @@ def main():
     state_dict, config = pickle.load(open(model_path, "rb"))
 
     # Instantiate environment
-    env = create_env(config["env"])
+    env = create_env(config)
 
     # Initialize model and load its parameters
     model = ActorCriticModel(config, env.observation_space, (env.action_space.n,), env.max_episode_steps)
