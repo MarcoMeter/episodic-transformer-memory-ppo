@@ -132,6 +132,11 @@ class PPOTrainer:
             {list} -- list of results of completed episodes.
         """
         episode_infos = []
+        
+        # Init memory buffer
+        self.buffer.memories = [self.memory[w] for w in range(self.num_workers)]
+        for w in range(self.num_workers):
+            self.buffer.memory_index[w] = w
 
         # Sample actions from the model and collect experiences for training
         for t in range(self.config["worker_steps"]):
@@ -139,13 +144,12 @@ class PPOTrainer:
             with torch.no_grad():
                 # Save the initial observations
                 self.buffer.obs[:, t] = torch.tensor(self.obs)
-                # Save initial memory sequence
-                self.buffer.memories[:, t] = self.memory.clone()
                 # Save mask
                 self.buffer.memory_mask[:, t] = self.memory_mask[self.worker_current_episode_step]
                 # Forward the model to retrieve the policy, the states' value and the recurrent cell states
                 policy, value, memory = self.model(torch.tensor(self.obs), self.memory, self.buffer.memory_mask[:, t])
                 self.buffer.values[:, t] = value
+                
                 # Set memory 
                 self.memory[self.worker_ids, self.worker_current_episode_step] = memory
 
@@ -171,8 +175,16 @@ class PPOTrainer:
                     worker.child.send(("reset", None))
                     # Get data from reset
                     obs = worker.child.recv()
+                    # Break the reference to the worker's memory
+                    mem_index = self.buffer.memory_index[w, t]
+                    self.buffer.memories[mem_index] = self.buffer.memories[mem_index].clone()
                     # Reset episodic memory
                     self.memory[w] = torch.zeros((self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
+                    if t < self.config["worker_steps"] - 1:
+                        # Save memorie
+                        self.buffer.memories.append(self.memory[w])
+                        # Save the reference index to the current memory
+                        self.buffer.memory_index[w, t + 1:] = len(self.buffer.memories) - 1
                 else:
                     # Increment worker timestep
                     self.worker_current_episode_step[w] +=1
