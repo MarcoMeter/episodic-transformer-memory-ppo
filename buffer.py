@@ -32,7 +32,7 @@ class Buffer():
         self.advantages = torch.zeros((self.n_workers, self.worker_steps))
         # Episodic memory index buffer
         self.memories = []
-        self.memory_mask = torch.zeros((self.n_workers, self.worker_steps, self.max_episode_length), dtype=torch.long)
+        self.memory_mask = torch.zeros((self.n_workers, self.worker_steps, self.max_episode_length), dtype=torch.bool)
         self.memory_index = torch.zeros((self.n_workers, self.worker_steps), dtype=torch.long)
 
     def prepare_batch_dict(self) -> None:
