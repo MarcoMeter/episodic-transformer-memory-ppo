@@ -10,12 +10,23 @@ class Minigrid:
         self._env = gym.make(name)
         # Decrease the agent's view size to raise the agent's memory challenge
         # On MiniGrid-Memory-S7-v0, the default view size is too large to actually demand a recurrent policy.
-        self._env = ViewSizeWrapper(self._env, 3)
-        self.max_episode_steps = self._env.max_steps
+        if "Memory" in name:
+            view_size = 3
+            self.tile_size = 28
+            hw = view_size * self.tile_size
+            self.max_episode_steps = 96
+            self._action_space = spaces.Discrete(3)
+        else:
+            view_size = 7
+            self.tile_size = 8
+            hw = view_size * self.tile_size
+            self.max_episode_steps = 64
+            self._action_space = self._env.action_space
+        self._env = ViewSizeWrapper(self._env, view_size)
         self._observation_space = spaces.Box(
                 low = 0,
                 high = 1.0,
-                shape = (3, 84, 84),
+                shape = (3, hw, hw),
                 dtype = np.float32)
 
     @property
@@ -26,13 +37,13 @@ class Minigrid:
     def action_space(self):
         # This reduces the agent's action space to the only relevant actions (rotate left/right, move forward)
         # to solve the Minigrid-Memory environment.
-        return spaces.Discrete(3)
-
+        return self._action_space
     def reset(self):
         self._env.seed(np.random.randint(0, 99))
+        self.t = 0
         self._rewards = []
         obs = self._env.reset()
-        obs = self._env.get_obs_render(obs["image"], tile_size=28).astype(np.float32) / 255.
+        obs = self._env.get_obs_render(obs["image"], tile_size=self.tile_size).astype(np.float32) / 255.
         # To conform PyTorch requirements, the channel dimension has to be first.
         obs = np.swapaxes(obs, 0, 2)
         obs = np.swapaxes(obs, 2, 1)
@@ -41,7 +52,11 @@ class Minigrid:
     def step(self, action):
         obs, reward, done, info = self._env.step(action)
         self._rewards.append(reward)
-        obs = self._env.get_obs_render(obs["image"], tile_size=28).astype(np.float32) / 255.
+        obs = self._env.get_obs_render(obs["image"], tile_size=self.tile_size).astype(np.float32) / 255.
+
+        if self.t == self.max_episode_steps - 1:
+            done = True
+
         if done:
             info = {"reward": sum(self._rewards),
                     "length": len(self._rewards)}
@@ -50,6 +65,7 @@ class Minigrid:
         # To conform PyTorch requirements, the channel dimension has to be first.
         obs = np.swapaxes(obs, 0, 2)
         obs = np.swapaxes(obs, 2, 1)
+        self.t += 1
         return obs, reward, done, info
 
     def render(self):
