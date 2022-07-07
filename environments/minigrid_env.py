@@ -3,7 +3,8 @@ import numpy as np
 import time
 
 from gym import spaces
-from gym_minigrid.wrappers import ViewSizeWrapper
+from gym_minigrid.wrappers import *
+from environments.mortar_env import *
 
 class Minigrid:
     def __init__(self, name):
@@ -16,13 +17,25 @@ class Minigrid:
             hw = view_size * self.tile_size
             self.max_episode_steps = 96
             self._action_space = spaces.Discrete(3)
+            self._env = ViewSizeWrapper(self._env, view_size)
+            self._env = RGBImgPartialObsWrapper(self._env, tile_size = self.tile_size)
+        elif "Mortar" in name:
+            self.tile_size = 9
+            hw = 9 * self.tile_size
+            self._env = RGBImgObsWrapper(self._env, tile_size=self.tile_size)
+            self.max_episode_steps = 72
+            self._action_space = spaces.Discrete(4)
         else:
             view_size = 7
             self.tile_size = 8
             hw = view_size * self.tile_size
             self.max_episode_steps = 64
             self._action_space = self._env.action_space
-        self._env = ViewSizeWrapper(self._env, view_size)
+            self._env = ViewSizeWrapper(self._env, view_size)
+            self._env = RGBImgPartialObsWrapper(self._env, tile_size = self.tile_size)
+
+        self._env = ImgObsWrapper(self._env)
+
         self._observation_space = spaces.Box(
                 low = 0,
                 high = 1.0,
@@ -39,11 +52,12 @@ class Minigrid:
         # to solve the Minigrid-Memory environment.
         return self._action_space
     def reset(self):
-        self._env.seed(np.random.randint(0, 99))
+        self._env.seed(np.random.randint(0, 999))
         self.t = 0
         self._rewards = []
         obs = self._env.reset()
-        obs = self._env.get_obs_render(obs["image"], tile_size=self.tile_size).astype(np.float32) / 255.
+        obs = obs.astype(np.float32) / 255.
+
         # To conform PyTorch requirements, the channel dimension has to be first.
         obs = np.swapaxes(obs, 0, 2)
         obs = np.swapaxes(obs, 2, 1)
@@ -52,7 +66,7 @@ class Minigrid:
     def step(self, action):
         obs, reward, done, info = self._env.step(action)
         self._rewards.append(reward)
-        obs = self._env.get_obs_render(obs["image"], tile_size=self.tile_size).astype(np.float32) / 255.
+        obs = obs.astype(np.float32) / 255.
 
         if self.t == self.max_episode_steps - 1:
             done = True

@@ -1,9 +1,9 @@
 "env": "Minigrid"
-"name": "MiniGrid-MemoryS9-v0"
-# "name": "MiniGrid-KeyCorridorS3R1-v0"
+# "name": "MiniGrid-MemoryS9-v0"
+"name": "MiniGrid-KeyCorridorS3R1-v0"
 "gamma": 0.99
 "lamda": 0.95
-"updates": 300
+"updates": 2000
 "epochs": 8
 "n_workers": 16
 "worker_steps": 512
@@ -15,10 +15,10 @@
     "layer_size": 384
     "num_heads": 4
 "learning_rate_schedule":
-    "initial": 2.5e-4
-    "final": 2.5e-4
+    "initial": 3.5e-4
+    "final": 1.5e-4
     "power": 1.0
-    "max_decay_steps": 300
+    "max_decay_steps": 500
 "beta_schedule":
     "initial": 0.001
     "final": 0.001

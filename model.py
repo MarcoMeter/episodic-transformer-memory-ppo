@@ -152,6 +152,7 @@ class ActorCriticModel(nn.Module):
              
         grads["policy"] = self._calc_grad_norm(self.lin_policy, self.policy)
         grads["value"] = self._calc_grad_norm(self.lin_value, self.value)
+        grads["model"] = self._calc_grad_norm(self, self.value)
           
         return grads
     
