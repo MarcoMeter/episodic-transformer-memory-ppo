@@ -31,6 +31,7 @@ class PPOTrainer:
         self.cr_schedule = config["clip_range_schedule"]
         self.num_mem_layers = config["episodic_memory"]["num_layers"]
         self.mem_layer_size = config["episodic_memory"]["layer_size"]
+        self.max_episode_steps = config["max_episode_steps"]
 
         # Setup Tensorboard Summary Writer
         if not os.path.exists("./summaries"):
@@ -63,15 +64,18 @@ class PPOTrainer:
         # Setup observation placeholder   
         self.obs = np.zeros((self.num_workers,) + observation_space.shape, dtype=np.float32)
         # Setup memory placeholder
-        self.memory = torch.zeros((self.num_workers, self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
+        self.memory = torch.zeros((self.num_workers, self.max_episode_steps, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         # Generate episodic memory mask
-        self.memory_mask = torch.tril(torch.ones((self.max_episode_length, self.max_episode_length)))
-        # Shift mask by one to account for the fact that for the first timestep the memory is empty
-        self.memory_mask = torch.cat((torch.zeros((1, self.max_episode_length)), self.memory_mask))[:-1]       
+        self.memory_mask = torch.tril(torch.ones((self.memory_length, self.memory_length)), diagonal=-1) 
         # Setup timestep placeholder
         self.worker_current_episode_step = torch.zeros((self.num_workers, ), dtype=torch.long)
         # Worker ids
         self.worker_ids = range(self.num_workers)
+        
+        # Setup memory window indices
+        repetitions = torch.repeat_interleave(torch.arange(0, self.memory_length).unsqueeze(0), self.memory_length - 1, dim = 0).long()
+        self.memory_indices = torch.stack([torch.arange(i, i + self.memory_length) for i in range(self.max_episode_steps - self.memory_length + 1)]).long()
+        self.memory_indices = torch.cat((repetitions, self.memory_indices))
 
         # Reset workers (i.e. environments)
         print("Step 5: Reset workers")
