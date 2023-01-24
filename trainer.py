@@ -66,7 +66,15 @@ class PPOTrainer:
         # Setup memory placeholder
         self.memory = torch.zeros((self.num_workers, self.max_episode_steps, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         # Generate episodic memory mask
-        self.memory_mask = torch.tril(torch.ones((self.memory_length, self.memory_length)), diagonal=-1) 
+        self.memory_mask = torch.tril(torch.ones((self.memory_length, self.memory_length)), diagonal=-1)
+        """ e.g. memory mask tensor looks like this if memory_length = 6
+        0, 0, 0, 0, 0, 0
+        1, 0, 0, 0, 0, 0
+        1, 1, 0, 0, 0, 0
+        1, 1, 1, 0, 0, 0
+        1, 1, 1, 1, 0, 0
+        1, 1, 1, 1, 1, 0
+        """ 
         # Setup timestep placeholder
         self.worker_current_episode_step = torch.zeros((self.num_workers, ), dtype=torch.long)
         # Worker ids
@@ -76,6 +84,15 @@ class PPOTrainer:
         repetitions = torch.repeat_interleave(torch.arange(0, self.memory_length).unsqueeze(0), self.memory_length - 1, dim = 0).long()
         self.memory_indices = torch.stack([torch.arange(i, i + self.memory_length) for i in range(self.max_episode_steps - self.memory_length + 1)]).long()
         self.memory_indices = torch.cat((repetitions, self.memory_indices))
+        """e.g. the memory window indices tensor looks like this if memory_length = 4 and max_episode_steps = 7:
+        0, 1, 2, 3
+        0, 1, 2, 3
+        0, 1, 2, 3
+        0, 1, 2, 3
+        1, 2, 3, 4
+        2, 3, 4, 5
+        3, 4, 5, 6
+        """
 
         # Reset workers (i.e. environments)
         print("Step 5: Reset workers")
