@@ -95,19 +95,9 @@ class ActorCriticModel(nn.Module):
 
         # Feed hidden layer
         h = F.relu(self.lin_hidden(h))
-
-        # Transformer positional encoding
-        pos_embedding = self.pos_emb(memories)
-        pos_embedding = torch.repeat_interleave(pos_embedding.unsqueeze(1), self.num_mem_layers, dim = 1)
-        memories = memories + pos_embedding
         
         # Forward transformer blocks
-        out_memories = []
-        for i, block in enumerate(self.transformer_blocks):
-            out_memories.append(h.detach())
-            h = block(memories[:, :, i], memories[:, :, i], h.unsqueeze(1), memory_mask).squeeze() # args: value, key, query, mask
-            if len(h.shape) == 1:
-                h = h.unsqueeze(0)
+        h, memories = self.transformer(h, memories, memory_mask, memory_indices)
 
         # Decouple policy from value
         # Feed hidden layer (policy)
@@ -118,8 +108,7 @@ class ActorCriticModel(nn.Module):
         value = self.value(h_value).reshape(-1)
         # Head: Policy
         pi = Categorical(logits=self.policy(h_policy))
-
-        memories = torch.stack(out_memories, dim=1)
+        
         return pi, value, memories
 
     def get_conv_output(self, shape:tuple) -> int:
