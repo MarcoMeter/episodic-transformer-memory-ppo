@@ -69,12 +69,13 @@ class ActorCriticModel(nn.Module):
         self.value = nn.Linear(self.hidden_size, 1)
         nn.init.orthogonal_(self.value.weight, 1)
 
-    def forward(self, obs:torch.tensor, memories:torch.tensor, memory_mask:torch.tensor):
+    def forward(self, obs:torch.tensor, memories:torch.tensor, memory_mask:torch.tensor, memory_indices:torch.tensor):
         """Forward pass of the model
 
         Args:
             obs {torch.tensor} -- Batch of observations
             recurrent_cell {torch.tensor} -- Memory cell of the recurrent layer
+            memory_indices {torch.tensor} -- Indices to select the positional encoding that matches the memory window
 
         Returns:
             {Categorical} -- Policy: Categorical distribution
