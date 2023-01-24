@@ -84,7 +84,7 @@ class PPOTrainer:
         repetitions = torch.repeat_interleave(torch.arange(0, self.memory_length).unsqueeze(0), self.memory_length - 1, dim = 0).long()
         self.memory_indices = torch.stack([torch.arange(i, i + self.memory_length) for i in range(self.max_episode_steps - self.memory_length + 1)]).long()
         self.memory_indices = torch.cat((repetitions, self.memory_indices))
-        """e.g. the memory window indices tensor looks like this if memory_length = 4 and max_episode_steps = 7:
+        """ e.g. the memory window indices tensor looks like this if memory_length = 4 and max_episode_steps = 7:
         0, 1, 2, 3
         0, 1, 2, 3
         0, 1, 2, 3
