@@ -9,6 +9,7 @@ from model import ActorCriticModel
 from worker import Worker
 from utils import create_env
 from utils import polynomial_decay
+from utils import batched_index_select
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter
 

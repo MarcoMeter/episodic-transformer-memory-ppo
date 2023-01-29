@@ -1,3 +1,4 @@
+import torch
 from environments.cartpole_env import CartPole
 from environments.minigrid_env import Minigrid
 from environments.poc_memory_env import PocMemoryEnv
@@ -44,3 +45,13 @@ def polynomial_decay(initial:float, final:float, max_decay_steps:int, power:floa
     # Return the polynomially decayed value given the current step
     else:
         return  ((initial - final) * ((1 - current_step / max_decay_steps) ** power) + final)
+    
+def batched_index_select(input, dim, index):
+    for ii in range(1, len(input.shape)):
+        if ii != dim:
+            index = index.unsqueeze(ii)
+    expanse = list(input.shape)
+    expanse[0] = -1
+    expanse[dim] = -1
+    index = index.expand(expanse)
+    return torch.gather(input, dim, index)
