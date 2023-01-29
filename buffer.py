@@ -19,8 +19,8 @@ class Buffer():
         self.batch_size = self.n_workers * self.worker_steps
         self.mini_batch_size = self.batch_size // self.n_mini_batches
         self.max_episode_length = max_episode_length
-        self.num_mem_layers = config["episodic_memory"]["num_layers"]
-        self.mem_layer_size = config["episodic_memory"]["layer_size"]
+        self.num_mem_layers = config["transformer"]["num_layers"]
+        self.mem_layer_size = config["transformer"]["layer_size"]
 
         # Initialize the buffer's data storage
         self.rewards = np.zeros((self.n_workers, self.worker_steps), dtype=np.float32)

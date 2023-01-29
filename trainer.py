@@ -30,8 +30,8 @@ class PPOTrainer:
         self.lr_schedule = config["learning_rate_schedule"]
         self.beta_schedule = config["beta_schedule"]
         self.cr_schedule = config["clip_range_schedule"]
-        self.num_mem_layers = config["episodic_memory"]["num_layers"]
-        self.mem_layer_size = config["episodic_memory"]["layer_size"]
+        self.num_mem_layers = config["transformer"]["num_layers"]
+        self.mem_layer_size = config["transformer"]["layer_size"]
         self.max_episode_steps = config["max_episode_steps"]
 
         # Setup Tensorboard Summary Writer
