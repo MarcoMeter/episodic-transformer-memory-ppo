@@ -130,8 +130,9 @@ class ActorCriticModel(nn.Module):
             
         grads["linear_layer"] = self._calc_grad_norm(self.lin_hidden)
         
-#        for i, block in enumerate(self.transformer_blocks): TODO: Fix this
-#            grads["transformer_block_" + str(i)] = self._calc_grad_norm(block)
+        transfomer_blocks = self.transformer.transformer_blocks
+        for i, block in enumerate(transfomer_blocks):
+            grads["transformer_block_" + str(i)] = self._calc_grad_norm(block)
              
         grads["policy"] = self._calc_grad_norm(self.lin_policy, self.policy)
         grads["value"] = self._calc_grad_norm(self.lin_value, self.value)
