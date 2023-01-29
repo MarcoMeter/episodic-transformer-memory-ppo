@@ -3,10 +3,10 @@ import torch
 from torch import nn
 from torch.distributions import Categorical
 from torch.nn import functional as F
-from transformer import TransformerBlock, SinusoidalPosition
+from transformer import Transformer
 
 class ActorCriticModel(nn.Module):
-    def __init__(self, config, observation_space, action_space_shape, max_episode_length, visualize_coef = False):
+    def __init__(self, config, observation_space, action_space_shape, max_episode_length):
         """Model setup
 
         Arguments:
@@ -16,10 +16,10 @@ class ActorCriticModel(nn.Module):
         """
         super().__init__()
         self.hidden_size = config["hidden_layer_size"]
-        self.memory_layer_size = config["episodic_memory"]["layer_size"]
-        self.num_mem_layers = config["episodic_memory"]["num_layers"]
-        self.num_heads = config["episodic_memory"]["num_heads"]
-        self.num_mem_layers = config["episodic_memory"]["num_layers"]
+        self.memory_layer_size = config["transformer"]["layer_size"]
+        self.num_mem_layers = config["transformer"]["num_layers"]
+        self.num_heads = config["transformer"]["num_heads"]
+        self.num_mem_layers = config["transformer"]["num_layers"]
         self.observation_space_shape = observation_space.shape
         self.max_episode_length = max_episode_length
 
@@ -45,11 +45,7 @@ class ActorCriticModel(nn.Module):
         nn.init.orthogonal_(self.lin_hidden.weight, np.sqrt(2))
 
         # Transformer Blocks
-        self.pos_emb = SinusoidalPosition(dim = self.memory_layer_size)
-        self.transformer_blocks = nn.ModuleList([
-            TransformerBlock(self.memory_layer_size, self.num_heads, visualize_coef = visualize_coef) 
-            for _ in range(self.num_mem_layers)])
-        # TODO init weights
+        self.transformer = Transformer(config, self.memory_layer_size, self.activ_fn, max_episode_length)
 
         # Decouple policy from value
         # Hidden layer of the policy
