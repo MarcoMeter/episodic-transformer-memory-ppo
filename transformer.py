@@ -29,11 +29,13 @@ class MultiHeadAttention(nn.Module):
 
     def forward(self, values, keys, query, mask):
         """
+        The forward pass of the multi head attention layer.
         Arguments:
             values {torch.tensor} -- Value in shape of (N, L, D)
             keys {torch.tensor} -- Keys in shape of (N, L, D)
             query {torch.tensor} -- Queries in shape of (N, L, D)
             mask {torch.tensor} -- Attention mask in shape of (N, L)
+            
         Returns:
             torch.tensor -- Output
             torch.tensor -- Attention weights
@@ -112,11 +114,13 @@ class TransformerBlock(Module):
 
     def forward(self, value, key, query, mask):
         """
+        Transformer Block forward pass.
         Arguments:
             values {torch.tensor} -- Value in shape of (N, L, D)
             keys {torch.tensor} -- Keys in shape of (N, L, D)
             query {torch.tensor} -- Queries in shape of (N, L, D)
             mask {torch.tensor} -- Attention mask in shape of (N, L)
+            
         Returns:
             torch.tensor -- Output
             torch.tensor -- Attention weights
@@ -206,11 +210,13 @@ class Transformer(nn.Module):
 
     def forward(self, h, memories, mask, memory_indices):
         """
+        Transformer encoder forward pass.
         Arguments:
             h {torch.tensor} -- Input (query)
             memories {torch.tesnor} -- Whole episoded memories of shape (N, L, num blocks, D)
             mask {torch.tensor} -- Attention mask (dtype: bool) of shape (N, L)
             memory_indices {torch.tensor} -- Memory window indices (dtype: long) of shape (N, L)
+            
         Returns:
             torch.tensor -- Output of the entire transformer encoder
             torch.tensor -- Out memories (i.e. inputs to the transformer blocks)

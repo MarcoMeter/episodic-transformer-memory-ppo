@@ -9,7 +9,7 @@ class ActorCriticModel(nn.Module):
     def __init__(self, config, observation_space, action_space_shape, max_episode_length, visualize_coef = False):
         """Model setup
 
-        Args:
+        Arguments:
             config {dict} -- Configuration and hyperparameters of the environment, trainer and model.
             observation_space {box} -- Properties of the agent's observation space
             action_space_shape {tuple} -- Dimensions of the action space
@@ -72,7 +72,7 @@ class ActorCriticModel(nn.Module):
     def forward(self, obs:torch.tensor, memory:torch.tensor, memory_mask:torch.tensor, memory_indices:torch.tensor):
         """Forward pass of the model
 
-        Args:
+        Arguments:
             obs {torch.tensor} -- Batch of observations
             recurrent_cell {torch.tensor} -- Memory cell of the recurrent layer
             memory_indices {torch.tensor} -- Indices to select the positional encoding that matches the memory window
@@ -149,7 +149,7 @@ class ActorCriticModel(nn.Module):
     def _calc_grad_norm(self, *modules):
         """Computes the norm of the gradients of the given modules.
 
-        Args:
+        Arguments:
             modules {list} -- List of modules to compute the norm of the gradients of.
 
         Returns:

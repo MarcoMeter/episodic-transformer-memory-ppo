@@ -20,7 +20,7 @@ class PocMemoryEnv():
     """
     def __init__(self, step_size:float=0.2, glob:bool=False, freeze:bool=False, max_episode_steps:int=-1):
         """
-        Args:
+        Arguments:
             step_size {float} -- Step size of the agent. Defaults to 0.2.
             glob {bool} -- Whether to sample starting positions across the entire space. Defaults to False.
             freeze_agent {bool} -- Whether to freeze the agent's position until goal positions are hidden. Defaults to False.
@@ -78,7 +78,7 @@ class PocMemoryEnv():
         """
         Executes the agents action in the environment if the agent is allowed to move.
 
-        Args:
+        Arguments:
             action {int} -- The agent action which should be executed.
 
         Returns:

@@ -6,7 +6,7 @@ class Buffer():
     """The buffer stores and prepares the training data. It supports recurrent policies. """
     def __init__(self, config:dict, observation_space:spaces.Box, max_episode_length:int, device:torch.device) -> None:
         """
-        Args:
+        Arguments:
             config {dict} -- Configuration and hyperparameters of the environment, trainer and model.
             observation_space {spaces.Box} -- The observation space of the agent
             device {torch.device} -- The device that will be used for training
@@ -60,7 +60,7 @@ class Buffer():
     def mini_batch_generator(self):
         """A generator that returns a dictionary containing the data of a whole minibatch.
         This mini batch is completely shuffled.
-        Args:
+        Arguments:
             num_mini_batches {int} -- Number of the to be sampled mini batches
         Yields:
             {dict} -- Mini batch data for training
@@ -84,7 +84,7 @@ class Buffer():
     def calc_advantages(self, last_value:torch.tensor, gamma:float, lamda:float) -> None:
         """Generalized advantage estimation (GAE)
 
-        Args:
+        Arguments:
             last_value {torch.tensor} -- Value of the last agent's state
             gamma {float} -- Discount factor
             lamda {float} -- GAE regularization parameter
