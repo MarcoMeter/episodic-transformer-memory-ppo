@@ -16,10 +16,7 @@ class ActorCriticModel(nn.Module):
         """
         super().__init__()
         self.hidden_size = config["hidden_layer_size"]
-        self.memory_layer_size = config["transformer"]["layer_size"]
-        self.num_mem_layers = config["transformer"]["num_layers"]
-        self.num_heads = config["transformer"]["num_heads"]
-        self.num_mem_layers = config["transformer"]["num_layers"]
+        self.memory_layer_size = config["transformer"]["embed_dim"]
         self.observation_space_shape = observation_space.shape
         self.max_episode_length = max_episode_length
 
@@ -45,7 +42,7 @@ class ActorCriticModel(nn.Module):
         nn.init.orthogonal_(self.lin_hidden.weight, np.sqrt(2))
 
         # Transformer Blocks
-        self.transformer = Transformer(config, self.memory_layer_size, self.activ_fn, max_episode_length)
+        self.transformer = Transformer(config["transformer"], self.memory_layer_size, max_episode_length)
 
         # Decouple policy from value
         # Hidden layer of the policy
@@ -133,8 +130,8 @@ class ActorCriticModel(nn.Module):
             
         grads["linear_layer"] = self._calc_grad_norm(self.lin_hidden)
         
-        for i, block in enumerate(self.transformer_blocks):
-            grads["transformer_block_" + str(i)] = self._calc_grad_norm(block)
+#        for i, block in enumerate(self.transformer_blocks): TODO: Fix this
+#            grads["transformer_block_" + str(i)] = self._calc_grad_norm(block)
              
         grads["policy"] = self._calc_grad_norm(self.lin_policy, self.policy)
         grads["value"] = self._calc_grad_norm(self.lin_value, self.value)

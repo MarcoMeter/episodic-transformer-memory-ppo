@@ -30,9 +30,9 @@ class PPOTrainer:
         self.lr_schedule = config["learning_rate_schedule"]
         self.beta_schedule = config["beta_schedule"]
         self.cr_schedule = config["clip_range_schedule"]
-        self.num_mem_layers = config["transformer"]["num_layers"]
-        self.mem_layer_size = config["transformer"]["layer_size"]
-        self.max_episode_steps = config["max_episode_steps"]
+        self.memory_length = config["transformer"]["memory_length"]
+        self.num_mem_layers = config["transformer"]["num_blocks"]
+        self.mem_layer_size = config["transformer"]["embed_dim"]
 
         # Setup Tensorboard Summary Writer
         if not os.path.exists("./summaries"):
@@ -65,7 +65,7 @@ class PPOTrainer:
         # Setup observation placeholder   
         self.obs = np.zeros((self.num_workers,) + observation_space.shape, dtype=np.float32)
         # Setup memory placeholder
-        self.memory = torch.zeros((self.num_workers, self.max_episode_steps, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
+        self.memory = torch.zeros((self.num_workers, self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
         # Generate episodic memory mask
         self.memory_mask = torch.tril(torch.ones((self.memory_length, self.memory_length)), diagonal=-1)
         """ e.g. memory mask tensor looks like this if memory_length = 6
@@ -83,9 +83,9 @@ class PPOTrainer:
         
         # Setup memory window indices
         repetitions = torch.repeat_interleave(torch.arange(0, self.memory_length).unsqueeze(0), self.memory_length - 1, dim = 0).long()
-        self.memory_indices = torch.stack([torch.arange(i, i + self.memory_length) for i in range(self.max_episode_steps - self.memory_length + 1)]).long()
+        self.memory_indices = torch.stack([torch.arange(i, i + self.memory_length) for i in range(self.max_episode_length - self.memory_length + 1)]).long()
         self.memory_indices = torch.cat((repetitions, self.memory_indices))
-        """ e.g. the memory window indices tensor looks like this if memory_length = 4 and max_episode_steps = 7:
+        """ e.g. the memory window indices tensor looks like this if memory_length = 4 and max_episode_length = 7:
         0, 1, 2, 3
         0, 1, 2, 3
         0, 1, 2, 3

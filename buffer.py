@@ -19,8 +19,9 @@ class Buffer():
         self.batch_size = self.n_workers * self.worker_steps
         self.mini_batch_size = self.batch_size // self.n_mini_batches
         self.max_episode_length = max_episode_length
-        self.num_mem_layers = config["transformer"]["num_layers"]
-        self.mem_layer_size = config["transformer"]["layer_size"]
+        self.memory_length = config["transformer"]["memory_length"]
+        self.num_mem_layers = config["transformer"]["num_blocks"]
+        self.mem_layer_size = config["transformer"]["embed_dim"]
 
         # Initialize the buffer's data storage
         self.rewards = np.zeros((self.n_workers, self.worker_steps), dtype=np.float32)
@@ -34,11 +35,11 @@ class Buffer():
         # Whole episode memories
         self.memories = []
         # Memory mask used during attention
-        self.memory_mask = torch.zeros((self.num_workers, self.worker_steps, self.memory_length), dtype=torch.bool)
+        self.memory_mask = torch.zeros((self.n_workers, self.worker_steps, self.memory_length), dtype=torch.bool)
         # Index to select the correct episode memory
-        self.memory_index = torch.zeros((self.num_workers, self.worker_steps), dtype=torch.long)
+        self.memory_index = torch.zeros((self.n_workers, self.worker_steps), dtype=torch.long)
         # Indices to slice the memory window
-        self.memory_indices = torch.zeros((self.num_workers, self.worker_steps, self.memory_length), dtype=torch.long)
+        self.memory_indices = torch.zeros((self.n_workers, self.worker_steps, self.memory_length), dtype=torch.long)
 
     def prepare_batch_dict(self) -> None:
         """Flattens the training samples and stores them inside a dictionary. Due to using a recurrent policy,

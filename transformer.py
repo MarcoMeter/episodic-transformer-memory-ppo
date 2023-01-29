@@ -176,7 +176,7 @@ class SinusoidalPosition(nn.Module):
 
 class Transformer(nn.Module):
     """Transformer encoder architecture without dropout. Positional encoding can be either "relative", "learned" or "" (none)."""
-    def __init__(self, config, input_dim, activation, max_episode_steps) -> None:
+    def __init__(self, config, input_dim, max_episode_steps) -> None:
         """Sets up the input embedding, positional encoding and the transformer blocks.
         Arguments:
             config {dict} -- Transformer config
@@ -189,7 +189,7 @@ class Transformer(nn.Module):
         self.embed_dim = config["embed_dim"]
         self.num_heads = config["num_heads"]
         self.max_episode_steps = max_episode_steps
-        self.activation = activation
+        self.activation = nn.ReLU()
 
         # Input embedding layer
         self.linear_embedding = nn.Linear(input_dim, self.embed_dim)
