@@ -10,10 +10,14 @@
 "n_mini_batch": 8
 "value_loss_coefficient": 0.25
 "hidden_layer_size": 384
-"episodic_memory":
-    "num_layers": 1
-    "layer_size": 384
+"transformer":
+    "num_blocks": 1
+    "embed_dim": 384
     "num_heads": 4
+    "memory_length": 32
+    "positional_encoding": ""
+    "attention_norm": "post"
+    "projection_norm": "post"
 "learning_rate_schedule":
     "initial": 3.5e-4
     "final": 1.5e-4
