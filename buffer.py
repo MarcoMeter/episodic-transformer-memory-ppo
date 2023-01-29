@@ -51,8 +51,9 @@ class Buffer():
             "log_probs": self.log_probs,
             "advantages": self.advantages,
             "obs": self.obs,
-            "memory_index": self.memory_index,
             "memory_mask": self.memory_mask,
+            "memory_index": self.memory_index,
+            "memory_indices": self.memory_indices,
         }
         # Convert the memories to a tensor
         self.memories = torch.stack(self.memories, dim=0)
