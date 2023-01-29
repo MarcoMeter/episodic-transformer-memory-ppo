@@ -219,7 +219,8 @@ class PPOTrainer:
                 self.obs[w] = obs
                             
         # Calculate advantages
-        _, last_value, _ = self.model(torch.tensor(self.obs), self.memory, self.memory_mask[self.worker_current_episode_step])
+        _, last_value, _ = self.model(torch.tensor(self.obs), self.memory,
+                                    self.memory_mask[torch.clip(self.worker_current_episode_step, 0, self.memory_length - 1)], self.buffer.memory_indices[:,-1])
         self.buffer.calc_advantages(last_value, self.config["gamma"], self.config["lamda"])
 
         return episode_infos
