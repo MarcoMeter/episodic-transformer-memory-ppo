@@ -31,9 +31,14 @@ class Buffer():
         self.values = torch.zeros((self.n_workers, self.worker_steps))
         self.advantages = torch.zeros((self.n_workers, self.worker_steps))
         # Episodic memory index buffer
+        # Whole episode memories
         self.memories = []
-        self.memory_mask = torch.zeros((self.n_workers, self.worker_steps, self.max_episode_length), dtype=torch.bool)
-        self.memory_index = torch.zeros((self.n_workers, self.worker_steps), dtype=torch.long)
+        # Memory mask used during attention
+        self.memory_mask = torch.zeros((self.num_workers, self.worker_steps, self.memory_length), dtype=torch.bool)
+        # Index to select the correct episode memory
+        self.memory_index = torch.zeros((self.num_workers, self.worker_steps), dtype=torch.long)
+        # Indices to slice the memory window
+        self.memory_indices = torch.zeros((self.num_workers, self.worker_steps, self.memory_length), dtype=torch.long)
 
     def prepare_batch_dict(self) -> None:
         """Flattens the training samples and stores them inside a dictionary. Due to using a recurrent policy,
