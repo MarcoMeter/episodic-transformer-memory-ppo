@@ -107,7 +107,7 @@ class ActorCriticModel(nn.Module):
     def get_conv_output(self, shape:tuple) -> int:
         """Computes the output size of the convolutional layers by feeding a dummy tensor.
 
-        Args:
+        Arguments:
             shape {tuple} -- Input shape of the data feeding the first convolutional layer
 
         Returns:

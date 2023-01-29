@@ -30,6 +30,7 @@ class MultiHeadAttention(nn.Module):
     def forward(self, values, keys, query, mask):
         """
         The forward pass of the multi head attention layer.
+        
         Arguments:
             values {torch.tensor} -- Value in shape of (N, L, D)
             keys {torch.tensor} -- Keys in shape of (N, L, D)
@@ -86,6 +87,7 @@ class MultiHeadAttention(nn.Module):
 class TransformerBlock(Module):
     def __init__(self, embed_dim, num_heads, attention_norm, projection_norm):
         """Transformer Block made of LayerNorms, Multi Head Attention and one fully connected feed forward projection.
+        
         Arguments:
             embed_dim {int} -- Size of the embeddding dimension
             num_heads {int} -- Number of attention headds
@@ -115,6 +117,7 @@ class TransformerBlock(Module):
     def forward(self, value, key, query, mask):
         """
         Transformer Block forward pass.
+        
         Arguments:
             values {torch.tensor} -- Value in shape of (N, L, D)
             keys {torch.tensor} -- Keys in shape of (N, L, D)
@@ -178,6 +181,7 @@ class Transformer(nn.Module):
     """Transformer encoder architecture without dropout. Positional encoding can be either "relative", "learned" or "" (none)."""
     def __init__(self, config, input_dim, max_episode_steps) -> None:
         """Sets up the input embedding, positional encoding and the transformer blocks.
+        
         Arguments:
             config {dict} -- Transformer config
             input_dim {int} -- Dimension of the input
@@ -211,6 +215,7 @@ class Transformer(nn.Module):
     def forward(self, h, memories, mask, memory_indices):
         """
         Transformer encoder forward pass.
+        
         Arguments:
             h {torch.tensor} -- Input (query)
             memories {torch.tesnor} -- Whole episoded memories of shape (N, L, num blocks, D)

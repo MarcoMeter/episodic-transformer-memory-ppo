@@ -67,8 +67,10 @@ class Buffer():
     def mini_batch_generator(self):
         """A generator that returns a dictionary containing the data of a whole minibatch.
         This mini batch is completely shuffled.
+        
         Arguments:
             num_mini_batches {int} -- Number of the to be sampled mini batches
+            
         Yields:
             {dict} -- Mini batch data for training
         """
