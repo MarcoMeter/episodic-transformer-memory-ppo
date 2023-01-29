@@ -251,6 +251,11 @@ class PPOTrainer:
         Returns:
             {list} -- list of trainig statistics (e.g. loss)
         """
+        
+        memory = batched_index_select(samples["memories"], 1, samples["memory_indices"])
+        mask = samples["memory_mask"]
+        memory_indices = samples["memory_indices"
+        
         # Forward model
         policy, value, _ = self.model(samples["obs"], samples["memories"], samples["memory_mask"])
 
