@@ -60,7 +60,7 @@ class Buffer():
     def mini_batch_generator(self):
         """A generator that returns a dictionary containing the data of a whole minibatch.
         This mini batch is completely shuffled.
-        Arguments:
+        Args:
             num_mini_batches {int} -- Number of the to be sampled mini batches
         Yields:
             {dict} -- Mini batch data for training
@@ -84,7 +84,7 @@ class Buffer():
     def calc_advantages(self, last_value:torch.tensor, gamma:float, lamda:float) -> None:
         """Generalized advantage estimation (GAE)
 
-        Arguments:
+        Args:
             last_value {torch.tensor} -- Value of the last agent's state
             gamma {float} -- Discount factor
             lamda {float} -- GAE regularization parameter
