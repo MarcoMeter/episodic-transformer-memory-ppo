@@ -69,7 +69,7 @@ class ActorCriticModel(nn.Module):
         self.value = nn.Linear(self.hidden_size, 1)
         nn.init.orthogonal_(self.value.weight, 1)
 
-    def forward(self, obs:torch.tensor, memories:torch.tensor, memory_mask:torch.tensor, memory_indices:torch.tensor):
+    def forward(self, obs:torch.tensor, memory:torch.tensor, memory_mask:torch.tensor, memory_indices:torch.tensor):
         """Forward pass of the model
 
         Args:
@@ -97,7 +97,7 @@ class ActorCriticModel(nn.Module):
         h = F.relu(self.lin_hidden(h))
         
         # Forward transformer blocks
-        h, memories = self.transformer(h, memories, memory_mask, memory_indices)
+        h, memory = self.transformer(h, memory, memory_mask, memory_indices)
 
         # Decouple policy from value
         # Feed hidden layer (policy)
@@ -109,7 +109,7 @@ class ActorCriticModel(nn.Module):
         # Head: Policy
         pi = Categorical(logits=self.policy(h_policy))
         
-        return pi, value, memories
+        return pi, value, memory
 
     def get_conv_output(self, shape:tuple) -> int:
         """Computes the output size of the convolutional layers by feeding a dummy tensor.
