@@ -168,8 +168,13 @@ class PPOTrainer:
                 self.buffer.obs[:, t] = torch.tensor(self.obs)
                 # Save mask
                 self.buffer.memory_mask[:, t] = self.memory_mask[self.worker_current_episode_step]
+                # Save memory indices
+                self.buffer.memory_indices[:, t] = self.memory_indices[self.worker_current_episode_step]
+                # Retrieve the memory window from the entire episode
+                sliced_memory = batched_index_select(self.memory, 1, self.buffer.memory_indices[:,t])
                 # Forward the model to retrieve the policy, the states' value and the recurrent cell states
-                policy, value, memory = self.model(torch.tensor(self.obs), self.memory, self.buffer.memory_mask[:, t])
+                policy, value, memory = self.model(torch.tensor(self.obs), sliced_memory, self.buffer.memory_mask[:, t],
+                                                   self.buffer.memory_indices[:,t])
                 self.buffer.values[:, t] = value
                 
                 # Set memory 
