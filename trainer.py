@@ -167,7 +167,7 @@ class PPOTrainer:
                 # Save the initial observations
                 self.buffer.obs[:, t] = torch.tensor(self.obs)
                 # Save mask
-                self.buffer.memory_mask[:, t] = self.memory_mask[self.worker_current_episode_step]
+                self.buffer.memory_mask[:, t] = self.memory_mask[torch.clip(self.worker_current_episode_step, 0, self.memory_length - 1)]
                 # Save memory indices
                 self.buffer.memory_indices[:, t] = self.memory_indices[self.worker_current_episode_step]
                 # Retrieve the memory window from the entire episode
@@ -218,12 +218,23 @@ class PPOTrainer:
                 # Store latest observations
                 self.obs[w] = obs
                             
-        # Calculate advantages
-        _, last_value, _ = self.model(torch.tensor(self.obs), self.memory,
-                                    self.memory_mask[torch.clip(self.worker_current_episode_step, 0, self.memory_length - 1)], self.buffer.memory_indices[:,-1])
+        # Compute the last value of the current observation and memory window to compute GAE
+        last_value = self.get_last_value()
+        # Compute advantages
         self.buffer.calc_advantages(last_value, self.config["gamma"], self.config["lamda"])
 
         return episode_infos
+
+    def get_last_value(self):
+        """Returns the last value of the current observation and memory window to compute GAE."""
+        start = torch.clip(self.worker_current_episode_step - self.memory_length, 0)
+        end = torch.clip(self.worker_current_episode_step, self.memory_length)
+        indices = torch.stack([torch.arange(start[b],end[b]) for b in range(self.num_workers)]).long()
+        sliced_memory = batched_index_select(self.memory, 1, indices) # Retrieve the memory window from the entire episode
+        _, last_value, _ = self.model(torch.tensor(self.obs),
+                                        sliced_memory, self.memory_mask[torch.clip(self.worker_current_episode_step, 0, self.memory_length - 1)],
+                                        self.buffer.memory_indices[:,-1])
+        return last_value
 
     def _train_epochs(self, learning_rate:float, clip_range:float, beta:float) -> list:
         """Trains several PPO epochs over one batch of data while dividing the batch into mini batches.
