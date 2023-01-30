@@ -223,8 +223,8 @@ class Transformer(nn.Module):
             memory_indices {torch.tensor} -- Memory window indices (dtype: long) of shape (N, L)
             
         Returns:
-            torch.tensor -- Output of the entire transformer encoder
-            torch.tensor -- Out memories (i.e. inputs to the transformer blocks)
+            {torch.tensor} -- Output of the entire transformer encoder
+            {torch.tensor} -- Out memories (i.e. inputs to the transformer blocks)
         """
         # Feed embedding layer and activate
         h = self.activation(self.linear_embedding(h))
