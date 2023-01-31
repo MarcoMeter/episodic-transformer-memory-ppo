@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 from einops import rearrange
-from neroRL.nn.module import Module
+from utils import Module
 
 class MultiHeadAttention(nn.Module):
     """Multi Head Attention without dropout inspired by https://github.com/aladdinpersson/Machine-Learning-Collection
