@@ -14,8 +14,7 @@
     "num_heads": 1
     "memory_length": 32
     "positional_encoding": ""
-    "attention_norm": "post"
-    "projection_norm": "post"
+    "layer_norm": "pre"
 "learning_rate_schedule":
     "initial": 3.0e-4
     "final": 3.0e-5
