@@ -1,0 +1,34 @@
+"env": "Minigrid"
+# "name": "MiniGrid-MemoryS9-v0"
+"name": "MiniGrid-KeyCorridorS3R1-v0"
+"gamma": 0.99
+"lamda": 0.95
+"updates": 2000
+"epochs": 8
+"n_workers": 16
+"worker_steps": 512
+"n_mini_batch": 8
+"value_loss_coefficient": 0.25
+"hidden_layer_size": 384
+"transformer":
+    "num_blocks": 1
+    "embed_dim": 384
+    "num_heads": 4
+    "memory_length": 32
+    "positional_encoding": ""
+    "layer_norm": "pre"
+"learning_rate_schedule":
+    "initial": 3.5e-4
+    "final": 1.5e-4
+    "power": 1.0
+    "max_decay_steps": 500
+"beta_schedule":
+    "initial": 0.001
+    "final": 0.001
+    "power": 1.0
+    "max_decay_steps": 300
+"clip_range_schedule":
+    "initial": 0.2
+    "final": 0.2
+    "power": 1.0
+    "max_decay_steps": 300
