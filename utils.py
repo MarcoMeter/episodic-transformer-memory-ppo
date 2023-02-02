@@ -6,6 +6,7 @@ from environments.minigrid_env import Minigrid
 from environments.poc_memory_env import PocMemoryEnv
 from environments.mortar_env import MortarABEnv, MortarBEnv
 from environments.memory_gym_env import MemoryGymWrapper
+from environments.wrapper import PyTorchEnv
 
 def create_env(config:dict):
     """Initializes an environment based on the provided environment name.
@@ -29,7 +30,7 @@ def create_env(config:dict):
     if config["env"] == "MortarB":
         return MortarBEnv()
     if config["env"] in ["SearingSpotlights", "MortarMayhem", "MortarMayhem-Grid", "MysteryPath", "MysteryPath-Grid"]:
-        return MemoryGymWrapper(config["env"] + "-v0")
+        return PyTorchEnv(MemoryGymWrapper(config["env"] + "-v0"))
 
 def polynomial_decay(initial:float, final:float, max_decay_steps:int, power:float, current_step:int) -> float:
     """Decays hyperparameters polynomially. If power is set to 1.0, the decay behaves linearly. 

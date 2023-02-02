@@ -6,9 +6,7 @@ import memory_gym
 from random import randint
 from gymnasium import spaces
 
-from neroRL.environments.env import Env
-
-class MemoryGymWrapper(Env):
+class MemoryGymWrapper():
     """
     This class wraps memory-gym environments.
     https://github.com/MarcoMeter/drl-memory-gym
@@ -47,6 +45,11 @@ class MemoryGymWrapper(Env):
             self._vector_observation_space = None
 
     @property
+    def observation_space(self):
+        """Returns the shape of the observation space of the agent."""
+        return self._env.observation_space
+
+    @property
     def unwrapped(self):
         """Return this environment in its vanilla (i.e. unwrapped) state."""
         return self
@@ -64,6 +67,7 @@ class MemoryGymWrapper(Env):
     @property
     def max_episode_steps(self):
         """Returns the maximum number of steps that an episode can last."""
+        self._env.reset()
         return self._env.max_episode_steps
 
     @property
