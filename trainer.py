@@ -10,6 +10,7 @@ from worker import Worker
 from utils import create_env
 from utils import polynomial_decay
 from utils import batched_index_select
+from utils import process_episode_info
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter
 
@@ -127,7 +128,7 @@ class PPOTrainer:
 
             # Store recent episode infos
             episode_infos.extend(sampled_episode_info)
-            episode_result = self._process_episode_info(episode_infos)
+            episode_result = process_episode_info(episode_infos)
 
             # Print training statistics
             if "success_percent" in episode_result:
@@ -346,27 +347,6 @@ class PPOTrainer:
         """
         for key, value in grad_info.items():
             self.writer.add_scalar("gradients/" + key, np.mean(value), update)
-
-    @staticmethod
-    def _process_episode_info(episode_info:list) -> dict:
-        """Extracts the mean and std of completed episode statistics like length and total reward.
-
-        Arguments:
-            episode_info {list} -- list of dictionaries containing results of completed episodes during the sampling phase
-
-        Returns:
-            {dict} -- Processed episode results (computes the mean and std for most available keys)
-        """
-        result = {}
-        if len(episode_info) > 0:
-            for key in episode_info[0].keys():
-                if key == "success":
-                    # This concerns the PocMemoryEnv only
-                    episode_result = [info[key] for info in episode_info]
-                    result[key + "_percent"] = np.sum(episode_result) / len(episode_result)
-                result[key + "_mean"] = np.mean([info[key] for info in episode_info])
-                result[key + "_std"] = np.std([info[key] for info in episode_info])
-        return result
 
     def _save_model(self) -> None:
         """Saves the model and the used training config to the models directory. The filename is based on the run id."""

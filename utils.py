@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import numpy as np
 from environments.cartpole_env import CartPole
 from environments.minigrid_env import Minigrid
 from environments.poc_memory_env import PocMemoryEnv
@@ -56,6 +57,26 @@ def batched_index_select(input, dim, index):
     expanse[dim] = -1
     index = index.expand(expanse)
     return torch.gather(input, dim, index)
+
+def process_episode_info(episode_info:list) -> dict:
+    """Extracts the mean and std of completed episode statistics like length and total reward.
+
+    Arguments:
+        episode_info {list} -- list of dictionaries containing results of completed episodes during the sampling phase
+
+    Returns:
+        {dict} -- Processed episode results (computes the mean and std for most available keys)
+    """
+    result = {}
+    if len(episode_info) > 0:
+        for key in episode_info[0].keys():
+            if key == "success":
+                # This concerns the PocMemoryEnv only
+                episode_result = [info[key] for info in episode_info]
+                result[key + "_percent"] = np.sum(episode_result) / len(episode_result)
+            result[key + "_mean"] = np.mean([info[key] for info in episode_info])
+            result[key + "_std"] = np.std([info[key] for info in episode_info])
+    return result
 
 class Module(nn.Module):
     """nn.Module is extended by functions to compute the norm and the mean of this module's parameters."""
