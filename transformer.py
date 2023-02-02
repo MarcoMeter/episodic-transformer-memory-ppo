@@ -120,8 +120,8 @@ class TransformerBlock(Module):
             mask {torch.tensor} -- Attention mask in shape of (N, L)
             
         Returns:
-            torch.tensor -- Output
-            torch.tensor -- Attention weights
+            {torch.tensor} -- Output
+            {torch.tensor} -- Attention weights
         """
         # Apply pre-layer norm across the attention input
         if self.layer_norm == "pre":
