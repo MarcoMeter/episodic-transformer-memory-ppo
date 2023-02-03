@@ -51,7 +51,7 @@ class PPOTrainer:
 
         # Init buffer
         print("Step 2: Init buffer")
-        self.buffer = Buffer(self.config, observation_space, self.max_episode_length, self.device)
+        self.buffer = Buffer(self.config, observation_space, action_space_shape, self.max_episode_length, self.device)
 
         # Init model
         print("Step 3: Init model and optimizer")
