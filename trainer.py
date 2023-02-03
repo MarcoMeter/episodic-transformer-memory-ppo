@@ -45,17 +45,17 @@ class PPOTrainer:
         print("Step 1: Init dummy environment")
         dummy_env = create_env(self.config)
         observation_space = dummy_env.observation_space
-        action_space_shape = (dummy_env.action_space.n,)
+        self.action_space_shape = (dummy_env.action_space.n,)
         self.max_episode_length = dummy_env.max_episode_steps
         dummy_env.close()
 
         # Init buffer
         print("Step 2: Init buffer")
-        self.buffer = Buffer(self.config, observation_space, action_space_shape, self.max_episode_length, self.device)
+        self.buffer = Buffer(self.config, observation_space, self.action_space_shape, self.max_episode_length, self.device)
 
         # Init model
         print("Step 3: Init model and optimizer")
-        self.model = ActorCriticModel(self.config, observation_space, action_space_shape, self.max_episode_length).to(self.device)
+        self.model = ActorCriticModel(self.config, observation_space, self.action_space_shape, self.max_episode_length).to(self.device)
         self.model.train()
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.lr_schedule["initial"])
 
@@ -281,9 +281,18 @@ class PPOTrainer:
         # Forward model
         policy, value, _ = self.model(samples["obs"], memory, samples["memory_mask"], samples["memory_indices"])
 
+        # Retrieve and process log_probs from each policy branch
+        log_probs, entropies = [], []
+        for i, policy_branch in enumerate(policy):
+            log_probs.append(policy_branch.log_prob(samples["actions"][:, i]))
+            entropies.append(policy_branch.entropy())
+        log_probs = torch.stack(log_probs, dim=1)
+        entropies = torch.stack(entropies, dim=1).sum(1).reshape(-1)
+
         # Compute policy surrogates to establish the policy loss
         normalized_advantage = (samples["advantages"] - samples["advantages"].mean()) / (samples["advantages"].std() + 1e-8)
-        log_probs = policy.log_prob(samples["actions"])
+        # Repeat is necessary for multi-discrete action spaces
+        normalized_advantage = normalized_advantage.unsqueeze(1).repeat(1, len(self.action_space_shape))
         log_ratio = log_probs - samples["log_probs"]
         ratio = torch.exp(log_ratio)
         surr1 = ratio * normalized_advantage
@@ -298,7 +307,7 @@ class PPOTrainer:
         vf_loss = vf_loss.mean()
 
         # Entropy Bonus
-        entropy_bonus = policy.entropy().mean()
+        entropy_bonus = entropies.mean()
 
         # Complete loss
         loss = -(policy_loss - self.config["value_loss_coefficient"] * vf_loss + beta * entropy_bonus)
