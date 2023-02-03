@@ -54,9 +54,13 @@ class ActorCriticModel(nn.Module):
         nn.init.orthogonal_(self.lin_value.weight, np.sqrt(2))
 
         # Outputs / Model heads
-        # Policy
-        self.policy = nn.Linear(self.hidden_size, action_space_shape[0])
-        nn.init.orthogonal_(self.policy.weight, np.sqrt(0.01))
+        # Policy (Multi-discrete Categorical distribution)
+        self.policy_branches = nn.ModuleList()
+        for num_actions in action_space_shape:
+            actor_branch = nn.Linear(in_features=512, out_features=num_actions)
+            nn.init.orthogonal_(actor_branch.weight, np.sqrt(0.01))
+            self.policy_branches.append(actor_branch)
+
 
         # Value function
         self.value = nn.Linear(self.hidden_size, 1)
@@ -100,7 +104,7 @@ class ActorCriticModel(nn.Module):
         # Head: Value function
         value = self.value(h_value).reshape(-1)
         # Head: Policy
-        pi = Categorical(logits=self.policy(h_policy))
+        pi = [Categorical(logits=branch(h_policy)) for branch in self.policy_branches]
         
         return pi, value, memory
 
