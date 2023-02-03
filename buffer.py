@@ -27,10 +27,10 @@ class Buffer():
 
         # Initialize the buffer's data storage
         self.rewards = np.zeros((self.n_workers, self.worker_steps), dtype=np.float32)
-        self.actions = torch.zeros((self.n_workers, self.worker_steps, len(self.action_space_shape)), dtype=torch.long)
+        self.actions = torch.zeros((self.n_workers, self.worker_steps, len(action_space_shape)), dtype=torch.long)
         self.dones = np.zeros((self.n_workers, self.worker_steps), dtype=np.bool)
         self.obs = torch.zeros((self.n_workers, self.worker_steps) + observation_space.shape)
-        self.log_probs = torch.zeros((self.n_workers, self.worker_steps, len(self.action_space_shape)))
+        self.log_probs = torch.zeros((self.n_workers, self.worker_steps, len(action_space_shape)))
         self.values = torch.zeros((self.n_workers, self.worker_steps))
         self.advantages = torch.zeros((self.n_workers, self.worker_steps))
         # Episodic memory index buffer
