@@ -181,11 +181,16 @@ class PPOTrainer:
                 # Set memory 
                 self.memory[self.worker_ids, self.worker_current_episode_step] = memory
 
-                # Sample actions
-                action = policy.sample()
-                log_prob = policy.log_prob(action)
-                self.buffer.actions[:, t] = action
-                self.buffer.log_probs[:, t] = log_prob
+                # Sample actions from each individual policy branch
+                actions = []
+                log_probs = []
+                for action_branch in policy:
+                    action = action_branch.sample()
+                    actions.append(action)
+                    log_probs.append(action_branch.log_prob(action))
+                # Write actions, log_probs, and values to buffer
+                self.buffer.actions[:, t] = torch.stack(actions, dim=1)
+                self.buffer.log_probs[:, t] = torch.stack(log_probs, dim=1)
 
             # Send actions to the environments
             for w, worker in enumerate(self.workers):
