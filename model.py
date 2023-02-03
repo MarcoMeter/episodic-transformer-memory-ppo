@@ -42,7 +42,7 @@ class ActorCriticModel(nn.Module):
         nn.init.orthogonal_(self.lin_hidden.weight, np.sqrt(2))
 
         # Transformer Blocks
-        self.transformer = Transformer(config["transformer"], self.memory_layer_size, max_episode_length)
+        self.transformer = Transformer(config["transformer"], self.memory_layer_size, self.max_episode_length)
 
         # Decouple policy from value
         # Hidden layer of the policy
