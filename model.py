@@ -136,8 +136,11 @@ class ActorCriticModel(nn.Module):
         transfomer_blocks = self.transformer.transformer_blocks
         for i, block in enumerate(transfomer_blocks):
             grads["transformer_block_" + str(i)] = self._calc_grad_norm(block)
-             
-        grads["policy"] = self._calc_grad_norm(self.lin_policy, self.policy)
+        
+        for i, head in enumerate(self.policy_branches):
+            grads["policy_head_" + str(i)] = self._calc_grad_norm(head)
+        
+        grads["lin_policy"] = self._calc_grad_norm(self.lin_policy)
         grads["value"] = self._calc_grad_norm(self.lin_value, self.value)
         grads["model"] = self._calc_grad_norm(self, self.value)
           
