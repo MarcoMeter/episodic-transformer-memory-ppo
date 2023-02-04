@@ -51,6 +51,7 @@ class Minigrid:
         # This reduces the agent's action space to the only relevant actions (rotate left/right, move forward)
         # to solve the Minigrid-Memory environment.
         return self._action_space
+    
     def reset(self):
         self._env.seed(np.random.randint(0, 999))
         self.t = 0
@@ -64,7 +65,7 @@ class Minigrid:
         return obs
 
     def step(self, action):
-        obs, reward, done, info = self._env.step(action)
+        obs, reward, done, info = self._env.step(action[0])
         self._rewards.append(reward)
         obs = obs.astype(np.float32) / 255.
 

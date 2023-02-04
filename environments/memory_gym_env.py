@@ -139,7 +139,7 @@ class MemoryGymWrapper():
         """Runs one timestep of the environment's dynamics.
         
         Arguments:
-            action {int} -- The to be executed action
+            action {list} -- The to be executed action
         
         Returns:
             {numpy.ndarray} -- Visual observation
@@ -147,9 +147,7 @@ class MemoryGymWrapper():
             {float} -- (Total) Scalar reward signaled by the environment
             {bool} -- Whether the episode of the environment terminated
             {dict} -- Further episode information (e.g. cumulated reward) retrieved from the environment once an episode completed
-        """
-        action = action if type(action) is list else [action]
-        
+        """    
         obs, reward, done, truncation, info = self._env.step(action)
 
         if type(self._env.observation_space) is spaces.Dict:

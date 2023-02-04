@@ -278,7 +278,7 @@ class MortarEnv(MiniGridEnv):
             obs, reward, done, info = MiniGridEnv.step(self, MiniGridEnv.Actions.drop)
         # Case: Agent shall execute the commands. The agent is not frozen anymore.
         else:
-            obs, reward, done, info = MiniGridEnv.step(self, action)
+            obs, reward, done, info = MiniGridEnv.step(self, action[0])
             # Process the command execution logic
             # One command is alive for command_duration steps
             if (self._step_count_commands) % (self.command_duration) == 0 and self._step_count_commands > 0:
