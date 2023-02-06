@@ -25,7 +25,7 @@ def create_env(config:dict):
     if config["type"] == "Minigrid":
         return Minigrid(config["name"])
     if config["type"] in ["SearingSpotlights", "MortarMayhem", "MortarMayhem-Grid", "MysteryPath", "MysteryPath-Grid"]:
-        return PyTorchEnv(MemoryGymWrapper(env_name = config["env"] + "-v0", reset_params=config["reset_params"]))
+        return PyTorchEnv(MemoryGymWrapper(env_name = config["name"], reset_params=config["reset_params"]))
 
 def polynomial_decay(initial:float, final:float, max_decay_steps:int, power:float, current_step:int) -> float:
     """Decays hyperparameters polynomially. If power is set to 1.0, the decay behaves linearly. 
