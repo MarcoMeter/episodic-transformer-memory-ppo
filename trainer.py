@@ -43,7 +43,7 @@ class PPOTrainer:
 
         # Init dummy environment and retrieve action and observation spaces
         print("Step 1: Init dummy environment")
-        dummy_env = create_env(self.configg["environment"])
+        dummy_env = create_env(self.config["environment"])
         observation_space = dummy_env.observation_space
         self.action_space_shape = (dummy_env.action_space.n,)
         self.max_episode_length = dummy_env.max_episode_steps
