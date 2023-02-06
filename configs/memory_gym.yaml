@@ -3,7 +3,7 @@ environment:
     name: "MortarMayhem-Grid-v0"
     reset_params:
         start-seed: 0
-        num-seeds: 1000
+        num-seeds: 10000
         agent_scale: 0.25
         arena_size: 5
         allowed_commands: 5
@@ -16,7 +16,7 @@ environment:
 gamma: 0.99
 lamda: 0.95
 updates: 10000
-epochs: 8
+epochs: 3
 n_workers: 16
 worker_steps: 512
 n_mini_batch: 8
@@ -33,7 +33,7 @@ learning_rate_schedule:
     initial: 3.0e-4
     final: 1.5e-4
     power: 1.0
-    max_decay_steps: 500
+    max_decay_steps: 10000
 beta_schedule:
     initial: 0.001
     final: 0.001
