@@ -4,7 +4,6 @@ import time
 
 from gym import spaces
 from gym_minigrid.wrappers import *
-from environments.mortar_env import *
 
 class Minigrid:
     def __init__(self, name):

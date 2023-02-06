@@ -4,7 +4,6 @@ import numpy as np
 from environments.cartpole_env import CartPole
 from environments.minigrid_env import Minigrid
 from environments.poc_memory_env import PocMemoryEnv
-from environments.mortar_env import MortarABEnv, MortarBEnv
 from environments.memory_gym_env import MemoryGymWrapper
 from environments.wrapper import PyTorchEnv
 
@@ -25,10 +24,6 @@ def create_env(config:dict):
         return CartPole(mask_velocity=True)
     if config["env"] == "Minigrid":
         return Minigrid(config["name"])
-    if config["env"] == "MortarAB":
-        return MortarABEnv()
-    if config["env"] == "MortarB":
-        return MortarBEnv()
     if config["env"] in ["SearingSpotlights", "MortarMayhem", "MortarMayhem-Grid", "MysteryPath", "MysteryPath-Grid"]:
         return PyTorchEnv(MemoryGymWrapper(config["env"] + "-v0"))
 
