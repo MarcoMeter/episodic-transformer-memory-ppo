@@ -1,4 +1,5 @@
-env: "CartPoleMasked"
+environment:
+    type: "CartPoleMasked"
 gamma: 0.99
 lamda: 0.95
 updates: 300

@@ -1,6 +1,18 @@
-env: "MortarMayhem-Grid"
-# name: MiniGrid-MemoryS9-v0
-name: "MortarMayhem-Grid-v0"
+environment:
+    type: "MortarMayhem-Grid"
+    name: "MortarMayhem-Grid-v0"
+    reset_params:
+        start-seed: 0
+        num-seeds: 1000
+        agent_scale: 0.25
+        arena_size: 5
+        allowed_commands: 5
+        command_count: [10]
+        explosion_duration: 2
+        explosion_delay: 5
+        reward_command_failure: 0.0
+        reward_command_success: 0.1
+        reward_episode_success: 0.0 
 gamma: 0.99
 lamda: 0.95
 updates: 10000

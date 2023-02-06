@@ -16,15 +16,15 @@ def create_env(config:dict):
     Returns:
         {env}: Returns the selected environment instance.
     """
-    if config["env"] == "PocMemoryEnv":
+    if config["type"] == "PocMemoryEnv":
         return PocMemoryEnv(glob=False, freeze=True, max_episode_steps=32)
-    if config["env"] == "CartPole":
+    if config["type"] == "CartPole":
         return CartPole(mask_velocity=False)
-    if config["env"] == "CartPoleMasked":
+    if config["type"] == "CartPoleMasked":
         return CartPole(mask_velocity=True)
-    if config["env"] == "Minigrid":
+    if config["type"] == "Minigrid":
         return Minigrid(config["name"])
-    if config["env"] in ["SearingSpotlights", "MortarMayhem", "MortarMayhem-Grid", "MysteryPath", "MysteryPath-Grid"]:
+    if config["type"] in ["SearingSpotlights", "MortarMayhem", "MortarMayhem-Grid", "MysteryPath", "MysteryPath-Grid"]:
         return PyTorchEnv(MemoryGymWrapper(env_name = config["env"] + "-v0", reset_params=config["reset_params"]))
 
 def polynomial_decay(initial:float, final:float, max_decay_steps:int, power:float, current_step:int) -> float:
