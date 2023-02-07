@@ -27,7 +27,7 @@ transformer:
     num_blocks: 3
     embed_dim: 384
     num_heads: 4
-    memory_length: 32
+    memory_length: 118
     positional_encoding: "relative"
     layer_norm: "pre"
 learning_rate_schedule:
