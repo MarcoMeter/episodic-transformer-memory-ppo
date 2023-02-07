@@ -15,8 +15,11 @@ transformer:
     embed_dim: 64
     num_heads: 1
     memory_length: 32
-    positional_encoding: ""
-    layer_norm: "pre"
+    positional_encoding: "" # options: "" "relative" "learned"
+    layer_norm: "pre" # options: "" "pre" "post"
+    gtrxl: True
+    gtrxl_bias: 0.0
+    gtrxl_swap: False
 learning_rate_schedule:
     initial: 3.0e-4
     final: 3.0e-4
