@@ -317,7 +317,7 @@ class PPOTrainer:
             pg["lr"] = learning_rate
         self.optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.25)
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config["max_grad_norm"])
         self.optimizer.step()
 
         # Monitor additional training stats
