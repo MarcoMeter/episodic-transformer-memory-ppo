@@ -1,10 +1,12 @@
-import torch
-from torch import nn
 import numpy as np
+import torch
+
+from torch import nn
+
 from environments.cartpole_env import CartPole
+from environments.memory_gym_env import MemoryGymWrapper
 from environments.minigrid_env import Minigrid
 from environments.poc_memory_env import PocMemoryEnv
-from environments.memory_gym_env import MemoryGymWrapper
 from environments.wrapper import PyTorchEnv
 
 def create_env(config:dict):

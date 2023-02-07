@@ -1,8 +1,10 @@
 import numpy as np
 import torch
-from torch import nn
+
 from torch.distributions import Categorical
+from torch import nn
 from torch.nn import functional as F
+
 from transformer import Transformer
 
 class ActorCriticModel(nn.Module):

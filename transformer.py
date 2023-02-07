@@ -1,7 +1,8 @@
 import numpy as np
 import torch
-from torch import nn
+
 from einops import rearrange
+from torch import nn
 from utils import Module
 
 class MultiHeadAttention(nn.Module):

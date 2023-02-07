@@ -1,9 +1,10 @@
-from gym import spaces
-import torch
 import numpy as np
+import torch
+
+from gym import spaces
 
 class Buffer():
-    """The buffer stores and prepares the training data. It supports recurrent policies. """
+    """The buffer stores and prepares the training data. It supports transformer-based memory policies. """
     def __init__(self, config:dict, observation_space:spaces.Box, action_space_shape:tuple, max_episode_length:int, device:torch.device) -> None:
         """
         Arguments:
