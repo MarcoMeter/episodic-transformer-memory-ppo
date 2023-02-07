@@ -5,3 +5,4 @@ tensorboard==2.0.2
 gym-minigrid==1.0.2
 reprint==0.6.0
 einops==0.4.1
+memory-gym
