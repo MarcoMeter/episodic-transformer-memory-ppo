@@ -99,10 +99,10 @@ class TransformerBlock(Module):
         self.attention = MultiHeadAttention(embed_dim, num_heads)
 
         # Setup GTrXL if used
-        self.use_gtrxl = config["gtrxl"]
+        self.use_gtrxl = config["gtrxl"] if "gtrxl" in config else False
         if self.use_gtrxl:
-            self.gate1 = GRUGate(embed_dim, config["gtrxl_bias"], config["gtrxl_swap"])
-            self.gate2 = GRUGate(embed_dim, config["gtrxl_bias"], config["gtrxl_swap"])
+            self.gate1 = GRUGate(embed_dim, config["gtrxl_bias"])
+            self.gate2 = GRUGate(embed_dim, config["gtrxl_bias"])
 
         # LayerNorms
         self.layer_norm = config["layer_norm"]
@@ -259,17 +259,15 @@ class GRUGate(torch.nn.Module):
         Inspired by https://github.com/dhruvramani/Transformers-RL/blob/master/layers.py
     """
 
-    def __init__(self, input_dim: int, bg: float = 0.0, swap_inputs:bool = False):
+    def __init__(self, input_dim: int, bg: float = 0.0):
         """
         Arguments:
             input_dim {int} -- Input dimension
             bg {float} -- Initial gate bias value. By setting bg > 0 we can explicitly initialize the gating mechanism to
             be close to the identity map. This can greatly improve the learning speed and stability since it
             initializes the agent close to a Markovian policy (ignore attention at the beginning). (default: {0.0})
-            swap_inputs {bool} -- Swap GRU inputs (default: {False})
         """
         super(GRUGate, self).__init__()
-        self.swap_inputs = swap_inputs
         self.Wr = torch.nn.Linear(input_dim, input_dim, bias=False)
         self.Ur = torch.nn.Linear(input_dim, input_dim, bias=False)
         self.Wz = torch.nn.Linear(input_dim, input_dim, bias=False)
@@ -294,13 +292,7 @@ class GRUGate(torch.nn.Module):
         Returns:
             {torch.tensor} -- Output
         """
-        if not self.swap_inputs:
-            r = self.sigmoid(self.Wr(y) + self.Ur(x))
-            z = self.sigmoid(self.Wz(y) + self.Uz(x) - self.bg)
-            h = self.tanh(self.Wg(y) + self.Ug(torch.mul(r, x)))
-            return torch.mul(1 - z, x) + torch.mul(z, h)
-        else:
-            r = self.sigmoid(self.Wr(x) + self.Ur(y))
-            z = self.sigmoid(self.Wz(x) + self.Uz(y) - self.bg)
-            h = self.tanh(self.Wg(x) + self.Ug(torch.mul(r, y)))
-            return torch.mul(1 - z, y) + torch.mul(z, h)
+        r = self.sigmoid(self.Wr(y) + self.Ur(x))
+        z = self.sigmoid(self.Wz(y) + self.Uz(x) - self.bg)
+        h = self.tanh(self.Wg(y) + self.Ug(torch.mul(r, x)))
+        return torch.mul(1 - z, x) + torch.mul(z, h)

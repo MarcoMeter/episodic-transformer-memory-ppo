@@ -32,7 +32,6 @@ transformer:
     layer_norm: "pre" # options: "" "pre" "post"
     gtrxl: True
     gtrxl_bias: 0.0
-    gtrxl_swap: False
 learning_rate_schedule:
     initial: 2.5e-4
     final: 1.0e-5

@@ -18,12 +18,6 @@ class Minigrid:
             self._action_space = spaces.Discrete(3)
             self._env = ViewSizeWrapper(self._env, view_size)
             self._env = RGBImgPartialObsWrapper(self._env, tile_size = self.tile_size)
-        elif "Mortar" in name:
-            self.tile_size = 9
-            hw = 9 * self.tile_size
-            self._env = RGBImgObsWrapper(self._env, tile_size=self.tile_size)
-            self.max_episode_steps = 72
-            self._action_space = spaces.Discrete(4)
         else:
             view_size = 7
             self.tile_size = 8
