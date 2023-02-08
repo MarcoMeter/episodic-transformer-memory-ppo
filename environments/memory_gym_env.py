@@ -18,14 +18,13 @@ class MemoryGymWrapper():
         MysteryPath-v0
         MysteryPath-Grid-v0
     """
-    def __init__(self, env_name, reset_params = None, realtime_mode = False, record_trajectory = False) -> None:
+    def __init__(self, env_name, reset_params = None, realtime_mode = False) -> None:
         """Instantiates the memory-gym environment.
         
         Arguments:
             env_name {string} -- Name of the memory-gym environment
             reset_params {dict} -- Provides parameters, like a seed, to configure the environment. (default: {None})
             realtime_mode {bool} -- Whether to render the environment in realtime. (default: {False})
-            record_trajectory {bool} -- Whether to record the trajectory of an entire episode. This can be used for video recording. (default: {False})
         """
         if reset_params is None:
             self._default_reset_params = {"start-seed": 0, "num-seeds": 100}
