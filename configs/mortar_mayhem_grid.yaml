@@ -1,0 +1,49 @@
+environment:
+    type: "MortarMayhem-Grid"
+    name: "MortarMayhem-Grid-v0"
+    reset_params:
+        start-seed: 0
+        num-seeds: 10000
+        agent_scale: 0.25
+        arena_size: 5
+        allowed_commands: 5
+        command_count: [10]
+        explosion_duration: [2]
+        explosion_delay: [5]
+        reward_command_failure: 0.0
+        reward_command_success: 0.1
+        reward_episode_success: 0.0 
+gamma: 0.995
+lamda: 0.95
+updates: 5000
+epochs: 3
+n_workers: 32
+worker_steps: 512
+n_mini_batch: 8
+value_loss_coefficient: 0.5
+hidden_layer_size: 384
+max_grad_norm: 0.25
+transformer:
+    num_blocks: 3
+    embed_dim: 384
+    num_heads: 4
+    memory_length: 118
+    positional_encoding: "relative"
+    layer_norm: "pre"
+    gtrxl: False
+    gtrxl_bias: 0.0
+learning_rate_schedule:
+    initial: 2.5e-4
+    final: 1.0e-5
+    power: 1.0
+    max_decay_steps: 10000
+beta_schedule:
+    initial: 0.0001
+    final: 0.000001
+    power: 1.0
+    max_decay_steps: 10000
+clip_range_schedule:
+    initial: 0.1
+    final: 0.1
+    power: 1.0
+    max_decay_steps: 10000
