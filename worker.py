@@ -8,15 +8,15 @@ def worker_process(remote: multiprocessing.connection.Connection, config:dict) -
     
     Arguments:
         remote {multiprocessing.connection.Connection} -- Parent thread
-        env_name {str} -- Name of the to be instantiated environment
+        config {dict} -- Configuration of the training environment
     """
-    # Spawn environment
+    # Spawn training environment
     try:
         env = create_env(config)
     except KeyboardInterrupt:
         pass
 
-    # Communication interface of the environment thread
+    # Communication interface of the environment process
     while True:
         try:
             cmd, data = remote.recv()
@@ -34,17 +34,17 @@ def worker_process(remote: multiprocessing.connection.Connection, config:dict) -
             raise WorkerException(e)
 
 class Worker:
-    """A worker that runs one environment on one thread."""
+    """A worker that runs one environment on one process."""
     child: multiprocessing.connection.Connection
     process: multiprocessing.Process
     
-    def __init__(self, env_name:str):
+    def __init__(self, env_config:dict):
         """
         Arguments:
-            env_name (str) -- Name of the to be instantiated environment
+            env_config {dict} -- Configuration of the training environment
         """
         self.child, parent = multiprocessing.Pipe()
-        self.process = multiprocessing.Process(target=worker_process, args=(parent, env_name))
+        self.process = multiprocessing.Process(target=worker_process, args=(parent, env_config))
         self.process.start()
 
 import tblib.pickling_support
@@ -52,6 +52,7 @@ tblib.pickling_support.install()
 import sys
 
 class WorkerException(Exception):
+    """Exception that is raised in the worker process and re-raised in the main process."""
     def __init__(self, ee):
         self.ee = ee
         __,  __, self.tb = sys.exc_info()

@@ -15,6 +15,7 @@ class ActorCriticModel(nn.Module):
             config {dict} -- Configuration and hyperparameters of the environment, trainer and model.
             observation_space {box} -- Properties of the agent's observation space
             action_space_shape {tuple} -- Dimensions of the action space
+            max_episode_length {int} -- The maximum number of steps in an episode
         """
         super().__init__()
         self.hidden_size = config["hidden_layer_size"]
@@ -72,12 +73,13 @@ class ActorCriticModel(nn.Module):
 
         Arguments:
             obs {torch.tensor} -- Batch of observations
-            recurrent_cell {torch.tensor} -- Memory cell of the recurrent layer
+            memory {torch.tensor} -- Episodic memory window
+            memory_mask {torch.tensor} -- Mask to prevent the model from attending to the padding
             memory_indices {torch.tensor} -- Indices to select the positional encoding that matches the memory window
 
         Returns:
             {Categorical} -- Policy: Categorical distribution
-            {torch.tensor} -- Value Function: Value
+            {torch.tensor} -- Value function: Value
         """
         # Set observation as input to the model
         h = obs

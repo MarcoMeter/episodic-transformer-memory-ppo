@@ -56,12 +56,14 @@ def batched_index_select(input, dim, index):
     The input tensor is expected to be of shape (batch_size, ...), where ... means any number of additional dimensions.
     The indices tensor is expected to be of shape (batch_size, num_indices), where num_indices is the number of indices to select for each element in the batch.
     The output tensor is of shape (batch_size, num_indices, ...), where ... means any number of additional dimensions that were present in the input tensor.
+
     Arguments:
-        input {torch.Tensor} -- Input tensor
+        input {torch.tensor} -- Input tensor
         dim {int} -- Dimension along which to select values
-        index {torch.Tensor} -- Tensor containing the indices to select
+        index {torch.tensor} -- Tensor containing the indices to select
+
     Returns:
-        {torch.Tensor} -- Output tensor
+        {torch.tensor} -- Output tensor
     """
     for ii in range(1, len(input.shape)):
         if ii != dim:

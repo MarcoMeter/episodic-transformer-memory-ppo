@@ -227,8 +227,8 @@ class Transformer(nn.Module):
             mask {torch.tensor} -- Attention mask (dtype: bool) of shape (N, L)
             memory_indices {torch.tensor} -- Memory window indices (dtype: long) of shape (N, L)
         Returns:
-            torch.tensor -- Output of the entire transformer encoder
-            torch.tensor -- Out memories (i.e. inputs to the transformer blocks)
+            {torch.tensor} -- Output of the entire transformer encoder
+            {torch.tensor} -- Out memories (i.e. inputs to the transformer blocks)
         """
         # Feed embedding layer and activate
         h = self.activation(self.linear_embedding(h))
@@ -252,7 +252,7 @@ class Transformer(nn.Module):
                 h = h.unsqueeze(0)
         return h, torch.stack(out_memories, dim=1)
     
-class GRUGate(torch.nn.Module):
+class GRUGate(nn.Module):
     """
     Overview:
         GRU Gating Unit used in GTrXL.
@@ -268,15 +268,15 @@ class GRUGate(torch.nn.Module):
             initializes the agent close to a Markovian policy (ignore attention at the beginning). (default: {0.0})
         """
         super(GRUGate, self).__init__()
-        self.Wr = torch.nn.Linear(input_dim, input_dim, bias=False)
-        self.Ur = torch.nn.Linear(input_dim, input_dim, bias=False)
-        self.Wz = torch.nn.Linear(input_dim, input_dim, bias=False)
-        self.Uz = torch.nn.Linear(input_dim, input_dim, bias=False)
-        self.Wg = torch.nn.Linear(input_dim, input_dim, bias=False)
-        self.Ug = torch.nn.Linear(input_dim, input_dim, bias=False)
+        self.Wr = nn.Linear(input_dim, input_dim, bias=False)
+        self.Ur = nn.Linear(input_dim, input_dim, bias=False)
+        self.Wz = nn.Linear(input_dim, input_dim, bias=False)
+        self.Uz = nn.Linear(input_dim, input_dim, bias=False)
+        self.Wg = nn.Linear(input_dim, input_dim, bias=False)
+        self.Ug = nn.Linear(input_dim, input_dim, bias=False)
         self.bg = nn.Parameter(torch.full([input_dim], bg))  # bias
-        self.sigmoid = torch.nn.Sigmoid()
-        self.tanh = torch.nn.Tanh()
+        self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
         nn.init.xavier_uniform_(self.Wr.weight)
         nn.init.xavier_uniform_(self.Ur.weight)
         nn.init.xavier_uniform_(self.Wz.weight)
@@ -287,8 +287,8 @@ class GRUGate(torch.nn.Module):
     def forward(self, x: torch.Tensor, y: torch.Tensor):
         """        
         Arguments:
-            x {torch.Tensor} -- First input
-            y {torch.Tensor} -- Second input
+            x {torch.tensor} -- First input
+            y {torch.tensor} -- Second input
         Returns:
             {torch.tensor} -- Output
         """

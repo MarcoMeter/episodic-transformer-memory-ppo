@@ -31,8 +31,8 @@ class PPOTrainer:
         self.beta_schedule = config["beta_schedule"]
         self.cr_schedule = config["clip_range_schedule"]
         self.memory_length = config["transformer"]["memory_length"]
-        self.num_mem_layers = config["transformer"]["num_blocks"]
-        self.mem_layer_size = config["transformer"]["embed_dim"]
+        self.num_blocks = config["transformer"]["num_blocks"]
+        self.embed_dim = config["transformer"]["embed_dim"]
 
         # Setup Tensorboard Summary Writer
         if not os.path.exists("./summaries"):
@@ -72,9 +72,9 @@ class PPOTrainer:
         for w, worker in enumerate(self.workers):
             self.obs[w] = worker.child.recv()
 
-        # Setup memory placeholder
-        self.memory = torch.zeros((self.num_workers, self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
-        # Generate episodic memory mask
+        # Setup placeholders for each worker's current episodic memory
+        self.memory = torch.zeros((self.num_workers, self.max_episode_length, self.num_blocks, self.embed_dim), dtype=torch.float32)
+        # Generate episodic memory mask used in attention
         self.memory_mask = torch.tril(torch.ones((self.memory_length, self.memory_length)), diagonal=-1)
         """ e.g. memory mask tensor looks like this if memory_length = 6
         0, 0, 0, 0, 0, 0
@@ -84,7 +84,7 @@ class PPOTrainer:
         1, 1, 1, 1, 0, 0
         1, 1, 1, 1, 1, 0
         """         
-        # Setup memory window indices
+        # Setup memory window indices to support a sliding window over the episodic memory
         repetitions = torch.repeat_interleave(torch.arange(0, self.memory_length).unsqueeze(0), self.memory_length - 1, dim = 0).long()
         self.memory_indices = torch.stack([torch.arange(i, i + self.memory_length) for i in range(self.max_episode_length - self.memory_length + 1)]).long()
         self.memory_indices = torch.cat((repetitions, self.memory_indices))
@@ -150,7 +150,7 @@ class PPOTrainer:
         """
         episode_infos = []
         
-        # Init memory buffer
+        # Init episodic memory buffer using each workers' current episodic memory
         self.buffer.memories = [self.memory[w] for w in range(self.num_workers)]
         for w in range(self.num_workers):
             self.buffer.memory_index[w] = w
@@ -159,18 +159,18 @@ class PPOTrainer:
         for t in range(self.config["worker_steps"]):
             # Gradients can be omitted for sampling training data
             with torch.no_grad():
-                # Save the initial observations
+                # Store the initial observations inside the buffer
                 self.buffer.obs[:, t] = torch.tensor(self.obs)
-                # Save mask and memory indices
+                # Store mask and memory indices inside the buffer
                 self.buffer.memory_mask[:, t] = self.memory_mask[torch.clip(self.worker_current_episode_step, 0, self.memory_length - 1)]
                 self.buffer.memory_indices[:, t] = self.memory_indices[self.worker_current_episode_step]
-                # Retrieve the memory window from the entire episode
+                # Retrieve the memory window from the entire episodic memory
                 sliced_memory = batched_index_select(self.memory, 1, self.buffer.memory_indices[:,t])
                 # Forward the model to retrieve the policy, the states' value and the new memory item
                 policy, value, memory = self.model(torch.tensor(self.obs), sliced_memory, self.buffer.memory_mask[:, t],
                                                    self.buffer.memory_indices[:,t])
                 
-                # Set memory
+                # Add new memory item to the episodic memory
                 self.memory[self.worker_ids, self.worker_current_episode_step] = memory
 
                 # Sample actions from each individual policy branch
@@ -205,11 +205,11 @@ class PPOTrainer:
                     mem_index = self.buffer.memory_index[w, t]
                     self.buffer.memories[mem_index] = self.buffer.memories[mem_index].clone()
                     # Reset episodic memory
-                    self.memory[w] = torch.zeros((self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
+                    self.memory[w] = torch.zeros((self.max_episode_length, self.num_blocks, self.embed_dim), dtype=torch.float32)
                     if t < self.config["worker_steps"] - 1:
-                        # Save memorie
+                        # Store memory inside the buffer
                         self.buffer.memories.append(self.memory[w])
-                        # Save the reference index to the current memory
+                        # Store the reference of to the current episodic memory inside the buffer
                         self.buffer.memory_index[w, t + 1:] = len(self.buffer.memories) - 1
                 else:
                     # Increment worker timestep
@@ -245,7 +245,7 @@ class PPOTrainer:
             beta {float} -- The current entropy bonus coefficient
             
         Returns:
-            {list} -- Training statistics of one training epoch"""
+            {tuple} -- Training and gradient statistics of one training epoch"""
         train_info, grad_info = [], {}
         for _ in range(self.config["epochs"]):
             mini_batch_generator = self.buffer.mini_batch_generator()
@@ -267,7 +267,7 @@ class PPOTrainer:
         Returns:
             {list} -- list of trainig statistics (e.g. loss)
         """
-        # Select memories
+        # Select episodic memory windows
         memory = batched_index_select(samples["memories"], 1, samples["memory_indices"])
         
         # Forward model
