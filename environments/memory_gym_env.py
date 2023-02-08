@@ -112,9 +112,6 @@ class MemoryGymWrapper():
         vis_obs = np.swapaxes(vis_obs, 0, 2)
         vis_obs = np.swapaxes(vis_obs, 2, 1)
 
-        if self._realtime_mode:
-            self._env.render()
-
         return vis_obs
 
     def step(self, action):
@@ -133,9 +130,6 @@ class MemoryGymWrapper():
         vis_obs, reward, done, truncation, info = self._env.step(action)
         vis_obs = np.swapaxes(vis_obs, 0, 2)
         vis_obs = np.swapaxes(vis_obs, 2, 1)
-
-        if self._realtime_mode:
-            img = self._env.render()
 
         return vis_obs, reward, done, info
     

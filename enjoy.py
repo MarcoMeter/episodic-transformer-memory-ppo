@@ -1,6 +1,7 @@
 import numpy as np
 import pickle
 import torch
+
 from docopt import docopt
 from model import ActorCriticModel
 from utils import create_env
@@ -35,7 +36,7 @@ def main():
     state_dict, config = pickle.load(open(model_path, "rb"))
 
     # Instantiate environment
-    env = create_env(config)
+    env = create_env(config["environment"], render=True)
 
     # Initialize model and load its parameters
     model = ActorCriticModel(config, env.observation_space, (env.action_space.n,), env.max_episode_steps)
@@ -64,9 +65,11 @@ def main():
         policy, value, new_memory = model(obs, in_memory, mask, indices)
         memory[:, t] = new_memory
         # Sample action
-        action = policy.sample().cpu().numpy()
+        action = []
+        for action_branch in policy:
+            action.append(action_branch.sample())
         # Step environemnt
-        obs, reward, done, info = env.step(int(action))
+        obs, reward, done, info = env.step(action)
         episode_rewards.append(reward)
         t += 1
     
