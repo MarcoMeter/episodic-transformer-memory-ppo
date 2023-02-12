@@ -67,7 +67,7 @@ def main():
         # Sample action
         action = []
         for action_branch in policy:
-            action.append(action_branch.sample())
+            action.append(action_branch.sample().item())
         # Step environemnt
         obs, reward, done, info = env.step(action)
         episode_rewards.append(reward)
