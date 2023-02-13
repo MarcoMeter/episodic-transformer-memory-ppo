@@ -49,7 +49,6 @@ def main():
 
     # Instantiate environment
     env = create_env(config["environment"], render=True)
-    obs = env.reset()
 
     # Initialize model and load its parameters
     model = ActorCriticModel(config, env.observation_space, (env.action_space.n,), env.max_episode_steps)
@@ -63,6 +62,7 @@ def main():
     memory, memory_mask, memory_indices = init_transformer_memory(config["transformer"], env.max_episode_steps, device)
     memory_length = config["transformer"]["memory_length"]
     t = 0
+    obs = env.reset()
     while not done:
         # Prepare observation and memory
         obs = torch.tensor(np.expand_dims(obs, 0), dtype=torch.float32, device=device)

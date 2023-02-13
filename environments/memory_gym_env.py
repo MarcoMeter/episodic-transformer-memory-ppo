@@ -46,11 +46,6 @@ class MemoryGymWrapper():
     def observation_space(self):
         """Returns the shape of the observation space of the agent."""
         return self._observation_space
-
-    @property
-    def unwrapped(self):
-        """Return this environment in its vanilla (i.e. unwrapped) state."""
-        return self
     
     @property
     def action_space(self):
@@ -63,25 +58,6 @@ class MemoryGymWrapper():
         self._env.reset()
         return self._env.max_episode_steps
 
-    @property
-    def seed(self):
-        """Returns the seed of the current episode."""
-        return self._seed
-
-    @property
-    def action_names(self):
-        """Returns a list of action names. It has to be noted that only the names of action branches are provided and not the actions themselves!"""
-        if isinstance(self.action_space, spaces.MultiDiscrete):
-            return [["no-op", "left", "right"], ["no-op", "up", "down"]]
-        else:
-            return [["no-op", "rotate left", "rotate right", "move forward"]]
-
-    @property
-    def get_episode_trajectory(self):
-        """Returns the trajectory of an entire episode as dictionary (vis_obs, vec_obs, rewards, actions)."""
-        self._trajectory["action_names"] = self.action_names
-        return self._trajectory if self._trajectory else None
-
     def reset(self, reset_params = None):
         """Resets the environment.
         
@@ -90,7 +66,6 @@ class MemoryGymWrapper():
         
         Returns:
             {numpy.ndarray} -- Visual observation
-            {numpy.ndarray} -- Vector observation
         """
         # Process reset parameters
         if reset_params is None:
@@ -122,7 +97,6 @@ class MemoryGymWrapper():
         
         Returns:
             {numpy.ndarray} -- Visual observation
-            {numpy.ndarray} -- Vector observation
             {float} -- (Total) Scalar reward signaled by the environment
             {bool} -- Whether the episode of the environment terminated
             {dict} -- Further episode information (e.g. cumulated reward) retrieved from the environment once an episode completed
