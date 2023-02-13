@@ -1,7 +1,11 @@
-matplotlib
-gym==0.18.3
 docopt==0.6.2
-tensorboard==2.0.2
-gym-minigrid==1.0.2
-reprint==0.6.0
 einops==0.4.1
+gym==0.18.3
+gym-minigrid==1.0.2
+matplotlib
+memory-gym
+protobuf==3.20.3
+reprint==0.6.0
+ruamel.yaml
+tblib
+tensorboard==2.0.2

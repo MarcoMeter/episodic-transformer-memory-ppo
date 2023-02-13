@@ -1,25 +1,25 @@
 import numpy as np
 import torch
-from torch import nn
+
 from torch.distributions import Categorical
+from torch import nn
 from torch.nn import functional as F
-from transformer import TransformerBlock, SinusoidalPosition
+
+from transformer import Transformer
 
 class ActorCriticModel(nn.Module):
-    def __init__(self, config, observation_space, action_space_shape, max_episode_length, visualize_coef = False):
+    def __init__(self, config, observation_space, action_space_shape, max_episode_length):
         """Model setup
 
-        Args:
+        Arguments:
             config {dict} -- Configuration and hyperparameters of the environment, trainer and model.
             observation_space {box} -- Properties of the agent's observation space
             action_space_shape {tuple} -- Dimensions of the action space
+            max_episode_length {int} -- The maximum number of steps in an episode
         """
         super().__init__()
         self.hidden_size = config["hidden_layer_size"]
-        self.memory_layer_size = config["episodic_memory"]["layer_size"]
-        self.num_mem_layers = config["episodic_memory"]["num_layers"]
-        self.num_heads = config["episodic_memory"]["num_heads"]
-        self.num_mem_layers = config["episodic_memory"]["num_layers"]
+        self.memory_layer_size = config["transformer"]["embed_dim"]
         self.observation_space_shape = observation_space.shape
         self.max_episode_length = max_episode_length
 
@@ -45,11 +45,7 @@ class ActorCriticModel(nn.Module):
         nn.init.orthogonal_(self.lin_hidden.weight, np.sqrt(2))
 
         # Transformer Blocks
-        self.pos_emb = SinusoidalPosition(dim = self.memory_layer_size)
-        self.transformer_blocks = nn.ModuleList([
-            TransformerBlock(self.memory_layer_size, self.num_heads, visualize_coef = visualize_coef) 
-            for _ in range(self.num_mem_layers)])
-        # TODO init weights
+        self.transformer = Transformer(config["transformer"], self.memory_layer_size, self.max_episode_length)
 
         # Decouple policy from value
         # Hidden layer of the policy
@@ -61,24 +57,29 @@ class ActorCriticModel(nn.Module):
         nn.init.orthogonal_(self.lin_value.weight, np.sqrt(2))
 
         # Outputs / Model heads
-        # Policy
-        self.policy = nn.Linear(self.hidden_size, action_space_shape[0])
-        nn.init.orthogonal_(self.policy.weight, np.sqrt(0.01))
-
+        # Policy (Multi-discrete categorical distribution)
+        self.policy_branches = nn.ModuleList()
+        for num_actions in action_space_shape:
+            actor_branch = nn.Linear(in_features=self.hidden_size, out_features=num_actions)
+            nn.init.orthogonal_(actor_branch.weight, np.sqrt(0.01))
+            self.policy_branches.append(actor_branch)
+            
         # Value function
         self.value = nn.Linear(self.hidden_size, 1)
         nn.init.orthogonal_(self.value.weight, 1)
 
-    def forward(self, obs:torch.tensor, memories:torch.tensor, memory_mask:torch.tensor):
+    def forward(self, obs:torch.tensor, memory:torch.tensor, memory_mask:torch.tensor, memory_indices:torch.tensor):
         """Forward pass of the model
 
-        Args:
+        Arguments:
             obs {torch.tensor} -- Batch of observations
-            recurrent_cell {torch.tensor} -- Memory cell of the recurrent layer
+            memory {torch.tensor} -- Episodic memory window
+            memory_mask {torch.tensor} -- Mask to prevent the model from attending to the padding
+            memory_indices {torch.tensor} -- Indices to select the positional encoding that matches the memory window
 
         Returns:
             {Categorical} -- Policy: Categorical distribution
-            {torch.tensor} -- Value Function: Value
+            {torch.tensor} -- Value function: Value
         """
         # Set observation as input to the model
         h = obs
@@ -94,19 +95,9 @@ class ActorCriticModel(nn.Module):
 
         # Feed hidden layer
         h = F.relu(self.lin_hidden(h))
-
-        # Transformer positional encoding
-        pos_embedding = self.pos_emb(memories)
-        pos_embedding = torch.repeat_interleave(pos_embedding.unsqueeze(1), self.num_mem_layers, dim = 1)
-        memories = memories + pos_embedding
         
         # Forward transformer blocks
-        out_memories = []
-        for i, block in enumerate(self.transformer_blocks):
-            out_memories.append(h.detach())
-            h = block(memories[:, :, i], memories[:, :, i], h.unsqueeze(1), memory_mask).squeeze() # args: value, key, query, mask
-            if len(h.shape) == 1:
-                h = h.unsqueeze(0)
+        h, memory = self.transformer(h, memory, memory_mask, memory_indices)
 
         # Decouple policy from value
         # Feed hidden layer (policy)
@@ -116,15 +107,14 @@ class ActorCriticModel(nn.Module):
         # Head: Value function
         value = self.value(h_value).reshape(-1)
         # Head: Policy
-        pi = Categorical(logits=self.policy(h_policy))
-
-        memories = torch.stack(out_memories, dim=1)
-        return pi, value, memories
+        pi = [Categorical(logits=branch(h_policy)) for branch in self.policy_branches]
+        
+        return pi, value, memory
 
     def get_conv_output(self, shape:tuple) -> int:
         """Computes the output size of the convolutional layers by feeding a dummy tensor.
 
-        Args:
+        Arguments:
             shape {tuple} -- Input shape of the data feeding the first convolutional layer
 
         Returns:
@@ -147,10 +137,14 @@ class ActorCriticModel(nn.Module):
             
         grads["linear_layer"] = self._calc_grad_norm(self.lin_hidden)
         
-        for i, block in enumerate(self.transformer_blocks):
+        transfomer_blocks = self.transformer.transformer_blocks
+        for i, block in enumerate(transfomer_blocks):
             grads["transformer_block_" + str(i)] = self._calc_grad_norm(block)
-             
-        grads["policy"] = self._calc_grad_norm(self.lin_policy, self.policy)
+        
+        for i, head in enumerate(self.policy_branches):
+            grads["policy_head_" + str(i)] = self._calc_grad_norm(head)
+        
+        grads["lin_policy"] = self._calc_grad_norm(self.lin_policy)
         grads["value"] = self._calc_grad_norm(self.lin_value, self.value)
         grads["model"] = self._calc_grad_norm(self, self.value)
           
@@ -159,7 +153,7 @@ class ActorCriticModel(nn.Module):
     def _calc_grad_norm(self, *modules):
         """Computes the norm of the gradients of the given modules.
 
-        Args:
+        Arguments:
             modules {list} -- List of modules to compute the norm of the gradients of.
 
         Returns:

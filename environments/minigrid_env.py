@@ -4,7 +4,6 @@ import time
 
 from gym import spaces
 from gym_minigrid.wrappers import *
-from environments.mortar_env import *
 
 class Minigrid:
     def __init__(self, name):
@@ -19,12 +18,6 @@ class Minigrid:
             self._action_space = spaces.Discrete(3)
             self._env = ViewSizeWrapper(self._env, view_size)
             self._env = RGBImgPartialObsWrapper(self._env, tile_size = self.tile_size)
-        elif "Mortar" in name:
-            self.tile_size = 9
-            hw = 9 * self.tile_size
-            self._env = RGBImgObsWrapper(self._env, tile_size=self.tile_size)
-            self.max_episode_steps = 72
-            self._action_space = spaces.Discrete(4)
         else:
             view_size = 7
             self.tile_size = 8
@@ -51,6 +44,7 @@ class Minigrid:
         # This reduces the agent's action space to the only relevant actions (rotate left/right, move forward)
         # to solve the Minigrid-Memory environment.
         return self._action_space
+    
     def reset(self):
         self._env.seed(np.random.randint(0, 999))
         self.t = 0
@@ -64,7 +58,7 @@ class Minigrid:
         return obs
 
     def step(self, action):
-        obs, reward, done, info = self._env.step(action)
+        obs, reward, done, info = self._env.step(action[0])
         self._rewards.append(reward)
         obs = obs.astype(np.float32) / 255.
 

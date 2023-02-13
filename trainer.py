@@ -1,27 +1,28 @@
 import numpy as np
 import os
 import pickle
-import torch
 import time
+import torch
+
+from collections import deque
 from torch import optim
+from torch.utils.tensorboard import SummaryWriter
+
 from buffer import Buffer
 from model import ActorCriticModel
+from utils import batched_index_select, create_env, polynomial_decay, process_episode_info
 from worker import Worker
-from utils import create_env
-from utils import polynomial_decay
-from collections import deque
-from torch.utils.tensorboard import SummaryWriter
 
 class PPOTrainer:
     def __init__(self, config:dict, run_id:str="run", device:torch.device=torch.device("cpu")) -> None:
         """Initializes all needed training components.
 
-        Args:
+        Arguments:
             config {dict} -- Configuration and hyperparameters of the environment, trainer and model.
             run_id {str, optional} -- A tag used to save Tensorboard Summaries and the trained model. Defaults to "run".
             device {torch.device, optional} -- Determines the training device. Defaults to cpu.
         """
-        # Set variables
+        # Set members
         self.config = config
         self.device = device
         self.run_id = run_id
@@ -29,8 +30,9 @@ class PPOTrainer:
         self.lr_schedule = config["learning_rate_schedule"]
         self.beta_schedule = config["beta_schedule"]
         self.cr_schedule = config["clip_range_schedule"]
-        self.num_mem_layers = config["episodic_memory"]["num_layers"]
-        self.mem_layer_size = config["episodic_memory"]["layer_size"]
+        self.memory_length = config["transformer"]["memory_length"]
+        self.num_blocks = config["transformer"]["num_blocks"]
+        self.embed_dim = config["transformer"]["embed_dim"]
 
         # Setup Tensorboard Summary Writer
         if not os.path.exists("./summaries"):
@@ -38,52 +40,67 @@ class PPOTrainer:
         timestamp = time.strftime("/%Y%m%d-%H%M%S" + "/")
         self.writer = SummaryWriter("./summaries/" + run_id + timestamp)
 
-        # Init dummy environment and retrieve action and observation spaces
+        # Init dummy environment to retrieve action space, observation space and max episode length
         print("Step 1: Init dummy environment")
-        dummy_env = create_env(self.config)
+        dummy_env = create_env(self.config["environment"])
         observation_space = dummy_env.observation_space
-        action_space_shape = (dummy_env.action_space.n,)
+        self.action_space_shape = (dummy_env.action_space.n,)
         self.max_episode_length = dummy_env.max_episode_steps
         dummy_env.close()
 
         # Init buffer
         print("Step 2: Init buffer")
-        self.buffer = Buffer(self.config, observation_space, self.max_episode_length, self.device)
+        self.buffer = Buffer(self.config, observation_space, self.action_space_shape, self.max_episode_length, self.device)
 
         # Init model
         print("Step 3: Init model and optimizer")
-        self.model = ActorCriticModel(self.config, observation_space, action_space_shape, self.max_episode_length).to(self.device)
+        self.model = ActorCriticModel(self.config, observation_space, self.action_space_shape, self.max_episode_length).to(self.device)
         self.model.train()
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.lr_schedule["initial"])
 
         # Init workers
         print("Step 4: Init environment workers")
-        self.workers = [Worker(self.config) for w in range(self.num_workers)]
-
-        # Setup observation placeholder   
-        self.obs = np.zeros((self.num_workers,) + observation_space.shape, dtype=np.float32)
-        # Setup memory placeholder
-        self.memory = torch.zeros((self.num_workers, self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
-        # Generate episodic memory mask
-        self.memory_mask = torch.tril(torch.ones((self.max_episode_length, self.max_episode_length)))
-        # Shift mask by one to account for the fact that for the first timestep the memory is empty
-        self.memory_mask = torch.cat((torch.zeros((1, self.max_episode_length)), self.memory_mask))[:-1]       
-        # Setup timestep placeholder
-        self.worker_current_episode_step = torch.zeros((self.num_workers, ), dtype=torch.long)
-        # Worker ids
+        self.workers = [Worker(self.config["environment"]) for w in range(self.num_workers)]
         self.worker_ids = range(self.num_workers)
-
+        self.worker_current_episode_step = torch.zeros((self.num_workers, ), dtype=torch.long)
         # Reset workers (i.e. environments)
         print("Step 5: Reset workers")
         for worker in self.workers:
             worker.child.send(("reset", None))
         # Grab initial observations and store them in their respective placeholder location
+        self.obs = np.zeros((self.num_workers,) + observation_space.shape, dtype=np.float32)
         for w, worker in enumerate(self.workers):
             self.obs[w] = worker.child.recv()
 
+        # Setup placeholders for each worker's current episodic memory
+        self.memory = torch.zeros((self.num_workers, self.max_episode_length, self.num_blocks, self.embed_dim), dtype=torch.float32)
+        # Generate episodic memory mask used in attention
+        self.memory_mask = torch.tril(torch.ones((self.memory_length, self.memory_length)), diagonal=-1)
+        """ e.g. memory mask tensor looks like this if memory_length = 6
+        0, 0, 0, 0, 0, 0
+        1, 0, 0, 0, 0, 0
+        1, 1, 0, 0, 0, 0
+        1, 1, 1, 0, 0, 0
+        1, 1, 1, 1, 0, 0
+        1, 1, 1, 1, 1, 0
+        """         
+        # Setup memory window indices to support a sliding window over the episodic memory
+        repetitions = torch.repeat_interleave(torch.arange(0, self.memory_length).unsqueeze(0), self.memory_length - 1, dim = 0).long()
+        self.memory_indices = torch.stack([torch.arange(i, i + self.memory_length) for i in range(self.max_episode_length - self.memory_length + 1)]).long()
+        self.memory_indices = torch.cat((repetitions, self.memory_indices))
+        """ e.g. the memory window indices tensor looks like this if memory_length = 4 and max_episode_length = 7:
+        0, 1, 2, 3
+        0, 1, 2, 3
+        0, 1, 2, 3
+        0, 1, 2, 3
+        1, 2, 3, 4
+        2, 3, 4, 5
+        3, 4, 5, 6
+        """
+
     def run_training(self) -> None:
-        """Runs the entire training logic from sampling data to optimizing the model."""
-        print("Step 6: Starting training")
+        """Runs the entire training logic from sampling data to optimizing the model. Only the final model is saved."""
+        print("Step 6: Starting training using " + str(self.device))
         # Store episode results for monitoring statistics
         episode_infos = deque(maxlen=100)
 
@@ -105,12 +122,12 @@ class PPOTrainer:
 
             # Store recent episode infos
             episode_infos.extend(sampled_episode_info)
-            episode_result = self._process_episode_info(episode_infos)
+            episode_result = process_episode_info(episode_infos)
 
             # Print training statistics
-            if "success_percent" in episode_result:
+            if "success" in episode_result:
                 result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} success={:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
-                    update, episode_result["reward_mean"], episode_result["reward_std"], episode_result["length_mean"], episode_result["length_std"], episode_result["success_percent"],
+                    update, episode_result["reward_mean"], episode_result["reward_std"], episode_result["length_mean"], episode_result["length_std"], episode_result["success"],
                     training_stats[0], training_stats[1], training_stats[3], training_stats[2], torch.mean(self.buffer.values), torch.mean(self.buffer.advantages))
             else:
                 result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
@@ -133,31 +150,40 @@ class PPOTrainer:
         """
         episode_infos = []
         
-        # Init memory buffer
+        # Init episodic memory buffer using each workers' current episodic memory
         self.buffer.memories = [self.memory[w] for w in range(self.num_workers)]
         for w in range(self.num_workers):
             self.buffer.memory_index[w] = w
 
-        # Sample actions from the model and collect experiences for training
+        # Sample actions from the model and collect experiences for optimization
         for t in range(self.config["worker_steps"]):
             # Gradients can be omitted for sampling training data
             with torch.no_grad():
-                # Save the initial observations
+                # Store the initial observations inside the buffer
                 self.buffer.obs[:, t] = torch.tensor(self.obs)
-                # Save mask
-                self.buffer.memory_mask[:, t] = self.memory_mask[self.worker_current_episode_step]
-                # Forward the model to retrieve the policy, the states' value and the recurrent cell states
-                policy, value, memory = self.model(torch.tensor(self.obs), self.memory, self.buffer.memory_mask[:, t])
-                self.buffer.values[:, t] = value
+                # Store mask and memory indices inside the buffer
+                self.buffer.memory_mask[:, t] = self.memory_mask[torch.clip(self.worker_current_episode_step, 0, self.memory_length - 1)]
+                self.buffer.memory_indices[:, t] = self.memory_indices[self.worker_current_episode_step]
+                # Retrieve the memory window from the entire episodic memory
+                sliced_memory = batched_index_select(self.memory, 1, self.buffer.memory_indices[:,t])
+                # Forward the model to retrieve the policy, the states' value and the new memory item
+                policy, value, memory = self.model(torch.tensor(self.obs), sliced_memory, self.buffer.memory_mask[:, t],
+                                                   self.buffer.memory_indices[:,t])
                 
-                # Set memory 
+                # Add new memory item to the episodic memory
                 self.memory[self.worker_ids, self.worker_current_episode_step] = memory
 
-                # Sample actions
-                action = policy.sample()
-                log_prob = policy.log_prob(action)
-                self.buffer.actions[:, t] = action
-                self.buffer.log_probs[:, t] = log_prob
+                # Sample actions from each individual policy branch
+                actions = []
+                log_probs = []
+                for action_branch in policy:
+                    action = action_branch.sample()
+                    actions.append(action)
+                    log_probs.append(action_branch.log_prob(action))
+                # Write actions, log_probs and values to buffer
+                self.buffer.actions[:, t] = torch.stack(actions, dim=1)
+                self.buffer.log_probs[:, t] = torch.stack(log_probs, dim=1)
+                self.buffer.values[:, t] = value
 
             # Send actions to the environments
             for w, worker in enumerate(self.workers):
@@ -166,12 +192,12 @@ class PPOTrainer:
             # Retrieve step results from the environments
             for w, worker in enumerate(self.workers):
                 obs, self.buffer.rewards[w, t], self.buffer.dones[w, t], info = worker.child.recv()
-                if info:
+                if info: # i.e. done
                     # Reset the worker's current timestep
                     self.worker_current_episode_step[w] = 0
                     # Store the information of the completed episode (e.g. total reward, episode length)
                     episode_infos.append(info)
-                    # Reset agent (potential interface for providing reset parameters)
+                    # Reset the agent (potential interface for providing reset parameters)
                     worker.child.send(("reset", None))
                     # Get data from reset
                     obs = worker.child.recv()
@@ -179,11 +205,11 @@ class PPOTrainer:
                     mem_index = self.buffer.memory_index[w, t]
                     self.buffer.memories[mem_index] = self.buffer.memories[mem_index].clone()
                     # Reset episodic memory
-                    self.memory[w] = torch.zeros((self.max_episode_length, self.num_mem_layers, self.mem_layer_size), dtype=torch.float32)
+                    self.memory[w] = torch.zeros((self.max_episode_length, self.num_blocks, self.embed_dim), dtype=torch.float32)
                     if t < self.config["worker_steps"] - 1:
-                        # Save memorie
+                        # Store memory inside the buffer
                         self.buffer.memories.append(self.memory[w])
-                        # Save the reference index to the current memory
+                        # Store the reference of to the current episodic memory inside the buffer
                         self.buffer.memory_index[w, t + 1:] = len(self.buffer.memories) - 1
                 else:
                     # Increment worker timestep
@@ -191,25 +217,37 @@ class PPOTrainer:
                 # Store latest observations
                 self.obs[w] = obs
                             
-        # Calculate advantages
-        _, last_value, _ = self.model(torch.tensor(self.obs), self.memory, self.memory_mask[self.worker_current_episode_step])
+        # Compute the last value of the current observation and memory window to compute GAE
+        last_value = self.get_last_value()
+        # Compute advantages
         self.buffer.calc_advantages(last_value, self.config["gamma"], self.config["lamda"])
 
         return episode_infos
 
+    def get_last_value(self):
+        """Returns:
+                {torch.tensor} -- Last value of the current observation and memory window to compute GAE"""
+        start = torch.clip(self.worker_current_episode_step - self.memory_length, 0)
+        end = torch.clip(self.worker_current_episode_step, self.memory_length)
+        indices = torch.stack([torch.arange(start[b],end[b]) for b in range(self.num_workers)]).long()
+        sliced_memory = batched_index_select(self.memory, 1, indices) # Retrieve the memory window from the entire episode
+        _, last_value, _ = self.model(torch.tensor(self.obs),
+                                        sliced_memory, self.memory_mask[torch.clip(self.worker_current_episode_step, 0, self.memory_length - 1)],
+                                        self.buffer.memory_indices[:,-1])
+        return last_value
+
     def _train_epochs(self, learning_rate:float, clip_range:float, beta:float) -> list:
         """Trains several PPO epochs over one batch of data while dividing the batch into mini batches.
         
-        Args:
+        Arguments:
             learning_rate {float} -- The current learning rate
             clip_range {float} -- The current clip range
             beta {float} -- The current entropy bonus coefficient
             
         Returns:
-            {list} -- Training statistics of one training epoch"""
+            {tuple} -- Training and gradient statistics of one training epoch"""
         train_info, grad_info = [], {}
         for _ in range(self.config["epochs"]):
-            # Retrieve the to be trained mini batches via a generator
             mini_batch_generator = self.buffer.mini_batch_generator()
             for mini_batch in mini_batch_generator:
                 train_info.append(self._train_mini_batch(mini_batch, learning_rate, clip_range, beta))
@@ -220,7 +258,7 @@ class PPOTrainer:
     def _train_mini_batch(self, samples:dict, learning_rate:float, clip_range:float, beta:float) -> list:
         """Uses one mini batch to optimize the model.
 
-        Args:
+        Arguments:
             mini_batch {dict} -- The to be used mini batch data to optimize the model
             learning_rate {float} -- Current learning rate
             clip_range {float} -- Current clip range
@@ -229,12 +267,23 @@ class PPOTrainer:
         Returns:
             {list} -- list of trainig statistics (e.g. loss)
         """
+        # Select episodic memory windows
+        memory = batched_index_select(samples["memories"], 1, samples["memory_indices"])
+        
         # Forward model
-        policy, value, _ = self.model(samples["obs"], samples["memories"], samples["memory_mask"])
+        policy, value, _ = self.model(samples["obs"], memory, samples["memory_mask"], samples["memory_indices"])
+
+        # Retrieve and process log_probs from each policy branch
+        log_probs, entropies = [], []
+        for i, policy_branch in enumerate(policy):
+            log_probs.append(policy_branch.log_prob(samples["actions"][:, i]))
+            entropies.append(policy_branch.entropy())
+        log_probs = torch.stack(log_probs, dim=1)
+        entropies = torch.stack(entropies, dim=1).sum(1).reshape(-1)
 
         # Compute policy surrogates to establish the policy loss
         normalized_advantage = (samples["advantages"] - samples["advantages"].mean()) / (samples["advantages"].std() + 1e-8)
-        log_probs = policy.log_prob(samples["actions"])
+        normalized_advantage = normalized_advantage.unsqueeze(1).repeat(1, len(self.action_space_shape)) # Repeat is necessary for multi-discrete action spaces
         log_ratio = log_probs - samples["log_probs"]
         ratio = torch.exp(log_ratio)
         surr1 = ratio * normalized_advantage
@@ -249,7 +298,7 @@ class PPOTrainer:
         vf_loss = vf_loss.mean()
 
         # Entropy Bonus
-        entropy_bonus = policy.entropy().mean()
+        entropy_bonus = entropies.mean()
 
         # Complete loss
         loss = -(policy_loss - self.config["value_loss_coefficient"] * vf_loss + beta * entropy_bonus)
@@ -259,7 +308,7 @@ class PPOTrainer:
             pg["lr"] = learning_rate
         self.optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config["max_grad_norm"])
         self.optimizer.step()
 
         # Monitor additional training stats
@@ -276,7 +325,7 @@ class PPOTrainer:
     def _write_training_summary(self, update, training_stats, episode_result) -> None:
         """Writes to an event file based on the run-id argument.
 
-        Args:
+        Arguments:
             update {int} -- Current PPO Update
             training_stats {list} -- Statistics of the training algorithm
             episode_result {dict} -- Statistics of completed episodes
@@ -297,33 +346,12 @@ class PPOTrainer:
     def _write_gradient_summary(self, update, grad_info):
         """Adds gradient statistics to the tensorboard event file.
 
-        Args:
+        Arguments:
             update {int} -- Current PPO Update
             grad_info {dict} -- Gradient statistics
         """
         for key, value in grad_info.items():
             self.writer.add_scalar("gradients/" + key, np.mean(value), update)
-
-    @staticmethod
-    def _process_episode_info(episode_info:list) -> dict:
-        """Extracts the mean and std of completed episode statistics like length and total reward.
-
-        Args:
-            episode_info {list} -- list of dictionaries containing results of completed episodes during the sampling phase
-
-        Returns:
-            {dict} -- Processed episode results (computes the mean and std for most available keys)
-        """
-        result = {}
-        if len(episode_info) > 0:
-            for key in episode_info[0].keys():
-                if key == "success":
-                    # This concerns the PocMemoryEnv only
-                    episode_result = [info[key] for info in episode_info]
-                    result[key + "_percent"] = np.sum(episode_result) / len(episode_result)
-                result[key + "_mean"] = np.mean([info[key] for info in episode_info])
-                result[key + "_std"] = np.std([info[key] for info in episode_info])
-        return result
 
     def _save_model(self) -> None:
         """Saves the model and the used training config to the models directory. The filename is based on the run id."""

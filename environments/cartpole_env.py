@@ -26,7 +26,7 @@ class CartPole:
         return obs * self._obs_mask
 
     def step(self, action):
-        obs, reward, done, info = self._env.step(action)
+        obs, reward, done, info = self._env.step(action[0])
         self._rewards.append(reward)
         if done:
             info = {"reward": sum(self._rewards),
