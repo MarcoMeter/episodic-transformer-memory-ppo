@@ -11,15 +11,17 @@ def main():
         train.py --help
     
     Options:
-        --config=<path>            Path to the config file [default: ./configs/poc_memory_env.yaml]
+        --config=<path>            Path to the yaml config file [default: ./configs/poc_memory_env.yaml]
         --run-id=<path>            Specifies the tag for saving the tensorboard summary [default: run].
         --cpu                      Force training on CPU [default: False]
     """
     options = docopt(_USAGE)
     run_id = options["--run-id"]
     cpu = options["--cpu"]
+    # Parse the yaml config file. The result is a dictionary, which is passed to the trainer.
     config = YamlParser(options["--config"]).get_config()
 
+    # Determine the device to be used for training and set the default tensor type
     if not cpu:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if torch.cuda.is_available():
