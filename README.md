@@ -5,17 +5,17 @@ This repository features a PyTorch based implementation of PPO using Transformer
 # Features
 
 - Episodic Transformer Memory
-  - TransformerXL
-  - Gated TransformerXL
+  - TransformerXL (TrXL)
+  - Gated TransformerXL (GTrXL)
 - Environments
   - Proof-of-concept Memory Task (PocMemoryEnv)
   - CartPole
     - Masked velocity
-  - MinigridMemory
+  - Minigrid Memory
     - Visual Observation Space 3x84x84
     - Egocentric Agent View Size 3x3 (default 7x7)
     - Action Space: forward, rotate left, rotate right
-  - MemoryGym
+  - [MemoryGym](https://github.com/MarcoMeter/drl-memory-gym)
     - Mortar Mayhem
     - Mystery Path
     - Searing Spotlights (WIP)
@@ -227,4 +227,10 @@ Run `tensorboad --logdir=summaries` to watch the training statistics in your bro
 
 # Results
 
-WIP
+Every experiment is repeated on 5 random seeds. Each model checkpoint is evaluated on 50 unknown environment seeds, which are repeated 5 times. Hence, one data point aggregates 1250 (5x5x50) episodes. Rliable is used to retrieve the interquartile mean and the bootstrapped confidence interval. The training is conducted using the more sophisticated DRL framework [neroRL](https://github.com/MarcoMeter/neroRL). The clean GRU-PPO baseline can be found [here](https://github.com/MarcoMeter/recurrent-ppo-truncated-bptt).
+
+## Mystery Path Grid (Goal & Origin Hidden)
+
+![mpg_off_results](./docs/assets/mpg_off.png)
+
+TrXL and GTrXL have identical performance. See [Issue #7](https://github.com/MarcoMeter/episodic-transformer-memory-ppo/issues/7).
