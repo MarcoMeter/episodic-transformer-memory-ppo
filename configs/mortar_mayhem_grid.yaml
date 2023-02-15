@@ -9,13 +9,13 @@ environment:
         allowed_commands: 5
         command_count: [10]
         explosion_duration: [2]
-        explosion_delay: [5]
+        explosion_delay: [6]
         reward_command_failure: 0.0
         reward_command_success: 0.1
         reward_episode_success: 0.0 
 gamma: 0.995
 lamda: 0.95
-updates: 5000
+updates: 3000
 epochs: 3
 n_workers: 32
 worker_steps: 512
