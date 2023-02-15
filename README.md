@@ -234,3 +234,7 @@ Every experiment is repeated on 5 random seeds. Each model checkpoint is evaluat
 ![mpg_off_results](./docs/assets/mpg_off.png)
 
 TrXL and GTrXL have identical performance. See [Issue #7](https://github.com/MarcoMeter/episodic-transformer-memory-ppo/issues/7).
+
+## Mortar Mayhem Grid (10 commands)
+
+![mmg_10_results](./docs/assets/mmg_10.png)
