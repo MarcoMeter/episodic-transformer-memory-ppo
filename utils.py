@@ -12,7 +12,7 @@ def create_env(config:dict, render:bool=False):
     """Initializes an environment based on the provided environment name.
     
     Arguments:
-        env_name {str}: Name of the to be instantiated environment
+        config {str}: The environment configuration.
         render {bool}: Whether to instantiate the environment in render mode. (default: {False})
 
     Returns:
@@ -25,7 +25,7 @@ def create_env(config:dict, render:bool=False):
     if config["type"] == "CartPoleMasked":
         return CartPole(mask_velocity=True)
     if config["type"] == "Minigrid":
-        return Minigrid(config["name"])
+        return Minigrid(config["name"], realtime_mode=render)
     if config["type"] in ["SearingSpotlights", "MortarMayhem", "MortarMayhem-Grid", "MysteryPath", "MysteryPath-Grid"]:
         return MemoryGymWrapper(env_name = config["name"], reset_params=config["reset_params"], realtime_mode=render)
 
