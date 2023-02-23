@@ -1,4 +1,4 @@
-import gym
+from gymnasium import spaces
 import numpy as np
 import time
 
@@ -22,18 +22,18 @@ class CartPole:
 
     def reset(self):
         self._rewards = []
-        obs = self._env.reset()
+        obs, _ = self._env.reset()
         return obs * self._obs_mask
 
     def step(self, action):
-        obs, reward, done, info = self._env.step(action[0])
+        obs, reward, done, truncation, info = self._env.step(action[0])
         self._rewards.append(reward)
-        if done:
+        if done or truncation:
             info = {"reward": sum(self._rewards),
                     "length": len(self._rewards)}
         else:
             info = None
-        return obs * self._obs_mask, reward / 100.0, done, info
+        return obs * self._obs_mask, reward / 100.0, done or truncation, info
 
     def render(self):
         self._env.render()

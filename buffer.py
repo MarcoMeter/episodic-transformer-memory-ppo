@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from gym import spaces
+from gymnasium import spaces
 
 class Buffer():
     """The buffer stores and prepares the training data. It supports transformer-based memory policies. """
