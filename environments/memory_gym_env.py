@@ -100,7 +100,10 @@ class MemoryGymWrapper():
             {float} -- (Total) Scalar reward signaled by the environment
             {bool} -- Whether the episode of the environment terminated
             {dict} -- Further episode information (e.g. cumulated reward) retrieved from the environment once an episode completed
-        """    
+        """
+        if isinstance(action, list):
+            if len(action) == 1:
+                action = action[0]
         vis_obs, reward, done, truncation, info = self._env.step(action)
         vis_obs = np.swapaxes(vis_obs, 0, 2)
         vis_obs = np.swapaxes(vis_obs, 2, 1)
