@@ -1,4 +1,4 @@
-# TransformerXL as Episoic Memory in Proximal Policy Optimization
+# TransformerXL as Episodic Memory in Proximal Policy Optimization
 
 This repository features a PyTorch based implementation of PPO using TransformerXL (TrXL). Its intention is to provide a clean baseline/reference implementation on how to successfully employ memory-based agents using Transformers and PPO.
 
@@ -26,7 +26,7 @@ This repository features a PyTorch based implementation of PPO using Transformer
 
 ```bibtex
 @article{pleines2023trxlppo,
-  title = {TransformerXL as Episoic Memory in Proximal Policy Optimization},
+  title = {TransformerXL as Episodic Memory in Proximal Policy Optimization},
   author = {Pleines, Marco and Pallasch, Matthias and Zimmer, Frank and Preuss, Mike},
   journal= {Github Repository},
   year = {2023},
