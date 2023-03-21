@@ -22,7 +22,7 @@ def init_transformer_memory(trxl_conf, max_episode_steps, device):
     # Episdic memory tensor
     memory = torch.zeros((1, max_episode_steps, trxl_conf["num_blocks"], trxl_conf["embed_dim"])).to(device)
     # Setup sliding memory window indices
-    repetitions = torch.repeat_interleave(torch.arange(0, trxl_conf["memory_length"]).unsqueeze(0), max_episode_steps - 1, dim = 0).long()
+    repetitions = torch.repeat_interleave(torch.arange(0, trxl_conf["memory_length"]).unsqueeze(0), trxl_conf["memory_length"] - 1, dim = 0).long()
     memory_indices = torch.stack([torch.arange(i, i + trxl_conf["memory_length"]) for i in range(max_episode_steps - trxl_conf["memory_length"] + 1)]).long()
     memory_indices = torch.cat((repetitions, memory_indices))
     return memory, memory_mask, memory_indices
