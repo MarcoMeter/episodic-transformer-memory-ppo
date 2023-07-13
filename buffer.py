@@ -2,6 +2,7 @@ import numpy as np
 import torch
 
 from gym import spaces
+from utils import batched_index_select
 
 class Buffer():
     """The buffer stores and prepares the training data. It supports transformer-based memory policies. """
@@ -61,8 +62,19 @@ class Buffer():
             "memory_index": self.memory_index,
             "memory_indices": self.memory_indices,
         }
-        # Convert the memories to a tensor
-        self.memories = torch.stack(self.memories, dim=0)
+        # Determine max episode steps (also consideres ongoing episodes)
+        self.actual_max_episode_steps = self.memory_indices.max().item() + 1
+        # Stack memories, add buffer fields to samples and remove unnecessary padding
+        self.memories = torch.stack(self.memories)
+        if self.max_episode_length >= self.actual_max_episode_steps:
+            samples["memory_mask"] = self.memory_mask[:, :, :self.actual_max_episode_steps]
+            samples["memory_indices"] = self.memory_indices[:, :, :self.actual_max_episode_steps]
+            self.memories = self.memories[:, :self.actual_max_episode_steps]
+        else:
+            samples["memory_mask"] = self.memory_mask[:, :, :self.actual_max_episode_steps].clone()
+            samples["memory_indices"] = self.memory_indices[:, :, :self.actual_max_episode_steps].clone()
+            self.memories = self.memories[:, :self.actual_max_episode_steps].clone()
+        samples["memory_index"] = self.memory_index
 
         # Flatten all samples and convert them to a tensor except memories and its memory mask
         self.samples_flat = {}
@@ -85,13 +97,35 @@ class Buffer():
             mini_batch_indices = indices[start: end]
             mini_batch = {}
             for key, value in self.samples_flat.items():
-                if key == "memory_index":
-                    # Add the correct episode memories to the concerned mini batch
-                    mini_batch["memories"] = self.memories[value[mini_batch_indices]]
-                else:
-                    mini_batch[key] = value[mini_batch_indices].to(self.device)
+                mini_batch[key] = value[mini_batch_indices].to(self.device)
+            # Retrieve memory windows for the concerned mini batch
+            mini_batch["memory_window"] = self._gather_memory_windows_batched(mini_batch_size, mini_batch_indices)
             yield mini_batch
+            
+    def _gather_memory_windows_batched(self, mini_batch_size, mini_batch_indices):
+        """Gathers the memory windows for the concerned mini batch.
+        To avoid out of memory errors, the data is processed using a loop that processes chunks.
+        This is the default function that is used.
 
+        Arguments:
+            mini_batch_size {int} -- Size of the mini batch that deterimines the number of memory windows to be gathered
+            mini_batch_indices {torch.tensor} -- Indices that determine the memory windows to be gathered
+
+        Returns:
+            torch.tensor -- The gathered memory windows for the concerned mini batch update
+        """
+        memory_windows = torch.zeros((mini_batch_size, min(self.actual_max_episode_steps, self.memory_length), self.num_blocks, self.embed_dim)).to(self.device)
+        step_size = 256
+        for i in range(0, mini_batch_size, step_size):
+            # Slice mini batch indices
+            indices = mini_batch_indices[i:i+step_size]
+            # Select memories (memory overhead)
+            selected_memories = self.memories[self.samples_flat["memory_index"][indices]]
+            # Select and write memory windows (memory overhead)
+            memory_indices = self.samples_flat["memory_indices"][indices, :self.actual_max_episode_steps]
+            memory_windows[i:i+step_size, :memory_windows.shape[1]] = batched_index_select(selected_memories, 1, memory_indices)
+        return memory_windows
+    
     def calc_advantages(self, last_value:torch.tensor, gamma:float, lamda:float) -> None:
         """Generalized advantage estimation (GAE)
 

@@ -267,11 +267,9 @@ class PPOTrainer:
         Returns:
             {list} -- list of trainig statistics (e.g. loss)
         """
-        # Select episodic memory windows
-        memory = batched_index_select(samples["memories"], 1, samples["memory_indices"])
         
         # Forward model
-        policy, value, _ = self.model(samples["obs"], memory, samples["memory_mask"], samples["memory_indices"])
+        policy, value, _ = self.model(samples["obs"], samples["memory_window"], samples["memory_mask"], samples["memory_indices"])
 
         # Retrieve and process log_probs from each policy branch
         log_probs, entropies = [], []
