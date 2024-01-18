@@ -15,19 +15,7 @@ transformer:
     embed_dim: 128
     num_heads: 1
     memory_length: 32
-    positional_encoding: "" # options: "" "relative" "learned"
-learning_rate_schedule:
-    initial: 3.0e-4
-    final: 3.0e-5
-    power: 1.0
-    max_decay_steps: 300
-beta_schedule:
-    initial: 0.001
-    final: 0.0001
-    power: 1.0
-    max_decay_steps: 300
-clip_range_schedule:
-    initial: 0.2
-    final: 0.2
-    power: 1.0
-    max_decay_steps: 300
+    positional_encoding: "absolute" # options: "" "relative" "learned"
+learning_rate: 3.0e-4
+beta: 0.001
+clip_range: 0.2

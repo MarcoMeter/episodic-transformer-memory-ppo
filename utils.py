@@ -1,7 +1,4 @@
 import numpy as np
-import torch
-
-from torch import nn
 
 from environments.cartpole_env import CartPole
 from environments.memory_gym_env import MemoryGymWrapper
@@ -28,26 +25,6 @@ def create_env(config:dict, render:bool=False):
         return Minigrid(config["name"])
     if config["type"] in ["SearingSpotlights", "MortarMayhem", "MortarMayhem-Grid", "MysteryPath", "MysteryPath-Grid"]:
         return MemoryGymWrapper(env_name = config["name"], reset_params=config["reset_params"], realtime_mode=render)
-
-def polynomial_decay(initial:float, final:float, max_decay_steps:int, power:float, current_step:int) -> float:
-    """Decays hyperparameters polynomially. If power is set to 1.0, the decay behaves linearly. 
-
-    Arguments:
-        initial {float} -- Initial hyperparameter such as the learning rate
-        final {float} -- Final hyperparameter such as the learning rate
-        max_decay_steps {int} -- The maximum numbers of steps to decay the hyperparameter
-        power {float} -- The strength of the polynomial decay
-        current_step {int} -- The current step of the training
-
-    Returns:
-        {float} -- Decayed hyperparameter
-    """
-    # Return the final value if max_decay_steps is reached or the initial and the final value are equal
-    if current_step > max_decay_steps or initial == final:
-        return final
-    # Return the polynomially decayed value given the current step
-    else:
-        return  ((initial - final) * ((1 - current_step / max_decay_steps) ** power) + final)
 
 def process_episode_info(episode_info:list) -> dict:
     """Extracts the mean and std of completed episode statistics like length and total reward.

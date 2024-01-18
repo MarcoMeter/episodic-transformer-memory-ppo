@@ -29,18 +29,6 @@ transformer:
     num_heads: 4
     memory_length: 118
     positional_encoding: "absolute"
-learning_rate_schedule:
-    initial: 2.5e-4
-    final: 1.0e-5
-    power: 1.0
-    max_decay_steps: 10000
-beta_schedule:
-    initial: 0.0001
-    final: 0.000001
-    power: 1.0
-    max_decay_steps: 10000
-clip_range_schedule:
-    initial: 0.1
-    final: 0.1
-    power: 1.0
-    max_decay_steps: 10000
+learning_rate: 2.5e-4
+beta: 0.0001
+clip_range: 0.1
