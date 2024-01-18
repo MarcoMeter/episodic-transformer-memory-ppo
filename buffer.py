@@ -91,23 +91,3 @@ class Buffer():
                 else:
                     mini_batch[key] = value[mini_batch_indices].to(self.device)
             yield mini_batch
-
-    def calc_advantages(self, last_value:torch.tensor, gamma:float, lamda:float) -> None:
-        """Generalized advantage estimation (GAE)
-
-        Arguments:
-            last_value {torch.tensor} -- Value of the last agent's state
-            gamma {float} -- Discount factor
-            lamda {float} -- GAE regularization parameter
-        """
-        with torch.no_grad():
-            last_advantage = 0
-            mask = torch.tensor(self.dones).logical_not() # mask values on terminal states
-            rewards = torch.tensor(self.rewards)
-            for t in reversed(range(self.worker_steps)):
-                last_value = last_value * mask[:, t]
-                last_advantage = last_advantage * mask[:, t]
-                delta = rewards[:, t] + gamma * last_value - self.values[:, t]
-                last_advantage = delta + gamma * lamda * last_advantage
-                self.advantages[:, t] = last_advantage
-                last_value = self.values[:, t]

@@ -113,7 +113,96 @@ class PPOTrainer:
 
         for update in range(self.config["updates"]):
             # Sample training data
-            sampled_episode_info = self._sample_training_data()
+            sampled_episode_info = []
+        
+            # Init episodic memory buffer using each workers' current episodic memory
+            self.buffer.memories = [self.memory[w] for w in range(self.num_workers)]
+            for w in range(self.num_workers):
+                self.buffer.memory_index[w] = w
+
+            # Sample actions from the model and collect experiences for optimization
+            for t in range(self.config["worker_steps"]):
+                # Gradients can be omitted for sampling training data
+                with torch.no_grad():
+                    # Store the initial observations inside the buffer
+                    self.buffer.obs[:, t] = torch.tensor(self.obs)
+                    # Store mask and memory indices inside the buffer
+                    self.buffer.memory_mask[:, t] = self.memory_mask[torch.clip(self.worker_current_episode_step, 0, self.memory_length - 1)]
+                    self.buffer.memory_indices[:, t] = self.memory_indices[self.worker_current_episode_step]
+                    # Retrieve the memory window from the entire episodic memory
+                    sliced_memory = batched_index_select(self.memory, 1, self.buffer.memory_indices[:,t])
+                    # Forward the model to retrieve the policy, the states' value and the new memory item
+                    policy, value, memory = self.model(torch.tensor(self.obs), sliced_memory, self.buffer.memory_mask[:, t],
+                                                    self.buffer.memory_indices[:,t])
+                    
+                    # Add new memory item to the episodic memory
+                    self.memory[self.worker_ids, self.worker_current_episode_step] = memory
+
+                    # Sample actions from each individual policy branch
+                    actions = []
+                    log_probs = []
+                    for action_branch in policy:
+                        action = action_branch.sample()
+                        actions.append(action)
+                        log_probs.append(action_branch.log_prob(action))
+                    # Write actions, log_probs and values to buffer
+                    self.buffer.actions[:, t] = torch.stack(actions, dim=1)
+                    self.buffer.log_probs[:, t] = torch.stack(log_probs, dim=1)
+                    self.buffer.values[:, t] = value
+
+                # Send actions to the environments
+                for w, worker in enumerate(self.workers):
+                    worker.child.send(("step", self.buffer.actions[w, t].cpu().numpy()))
+
+                # Retrieve step results from the environments
+                for w, worker in enumerate(self.workers):
+                    obs, self.buffer.rewards[w, t], self.buffer.dones[w, t], info = worker.child.recv()
+                    if info: # i.e. done
+                        # Reset the worker's current timestep
+                        self.worker_current_episode_step[w] = 0
+                        # Store the information of the completed episode (e.g. total reward, episode length)
+                        sampled_episode_info.append(info)
+                        # Reset the agent (potential interface for providing reset parameters)
+                        worker.child.send(("reset", None))
+                        # Get data from reset
+                        obs = worker.child.recv()
+                        # Break the reference to the worker's memory
+                        mem_index = self.buffer.memory_index[w, t]
+                        self.buffer.memories[mem_index] = self.buffer.memories[mem_index].clone()
+                        # Reset episodic memory
+                        self.memory[w] = torch.zeros((self.max_episode_length, self.num_blocks, self.embed_dim), dtype=torch.float32)
+                        if t < self.config["worker_steps"] - 1:
+                            # Store memory inside the buffer
+                            self.buffer.memories.append(self.memory[w])
+                            # Store the reference of to the current episodic memory inside the buffer
+                            self.buffer.memory_index[w, t + 1:] = len(self.buffer.memories) - 1
+                    else:
+                        # Increment worker timestep
+                        self.worker_current_episode_step[w] +=1
+                    # Store latest observations
+                    self.obs[w] = obs
+                                
+            # Compute the last value of the current observation and memory window to compute GAE
+            start = torch.clip(self.worker_current_episode_step - self.memory_length, 0)
+            end = torch.clip(self.worker_current_episode_step, self.memory_length)
+            indices = torch.stack([torch.arange(start[b],end[b]) for b in range(self.num_workers)]).long()
+            sliced_memory = batched_index_select(self.memory, 1, indices) # Retrieve the memory window from the entire episode
+            _, last_value, _ = self.model(torch.tensor(self.obs),
+                                            sliced_memory, self.memory_mask[torch.clip(self.worker_current_episode_step, 0, self.memory_length - 1)],
+                                            self.buffer.memory_indices[:,-1])
+
+            # Compute advantages
+            with torch.no_grad():
+                last_advantage = 0
+                mask = torch.tensor(self.buffer.dones).logical_not() # mask values on terminal states
+                rewards = torch.tensor(self.buffer.rewards)
+                for t in reversed(range(self.config["worker_steps"])):
+                    last_value = last_value * mask[:, t]
+                    last_advantage = last_advantage * mask[:, t]
+                    delta = rewards[:, t] + self.config["gamma"] * last_value - self.buffer.values[:, t]
+                    last_advantage = delta + self.config["gamma"] * self.config["lamda"] * last_advantage
+                    self.buffer.advantages[:, t] = last_advantage
+                    last_value = self.buffer.values[:, t]
 
             # Prepare the sampled data inside the buffer (splits data into sequences)
             self.buffer.prepare_batch_dict()
@@ -142,100 +231,6 @@ class PPOTrainer:
 
         # Save the trained model at the end of the training
         self._save_model()
-
-    def _sample_training_data(self) -> list:
-        """Runs all n workers for n steps to sample training data.
-
-        Returns:
-            {list} -- list of results of completed episodes.
-        """
-        episode_infos = []
-        
-        # Init episodic memory buffer using each workers' current episodic memory
-        self.buffer.memories = [self.memory[w] for w in range(self.num_workers)]
-        for w in range(self.num_workers):
-            self.buffer.memory_index[w] = w
-
-        # Sample actions from the model and collect experiences for optimization
-        for t in range(self.config["worker_steps"]):
-            # Gradients can be omitted for sampling training data
-            with torch.no_grad():
-                # Store the initial observations inside the buffer
-                self.buffer.obs[:, t] = torch.tensor(self.obs)
-                # Store mask and memory indices inside the buffer
-                self.buffer.memory_mask[:, t] = self.memory_mask[torch.clip(self.worker_current_episode_step, 0, self.memory_length - 1)]
-                self.buffer.memory_indices[:, t] = self.memory_indices[self.worker_current_episode_step]
-                # Retrieve the memory window from the entire episodic memory
-                sliced_memory = batched_index_select(self.memory, 1, self.buffer.memory_indices[:,t])
-                # Forward the model to retrieve the policy, the states' value and the new memory item
-                policy, value, memory = self.model(torch.tensor(self.obs), sliced_memory, self.buffer.memory_mask[:, t],
-                                                   self.buffer.memory_indices[:,t])
-                
-                # Add new memory item to the episodic memory
-                self.memory[self.worker_ids, self.worker_current_episode_step] = memory
-
-                # Sample actions from each individual policy branch
-                actions = []
-                log_probs = []
-                for action_branch in policy:
-                    action = action_branch.sample()
-                    actions.append(action)
-                    log_probs.append(action_branch.log_prob(action))
-                # Write actions, log_probs and values to buffer
-                self.buffer.actions[:, t] = torch.stack(actions, dim=1)
-                self.buffer.log_probs[:, t] = torch.stack(log_probs, dim=1)
-                self.buffer.values[:, t] = value
-
-            # Send actions to the environments
-            for w, worker in enumerate(self.workers):
-                worker.child.send(("step", self.buffer.actions[w, t].cpu().numpy()))
-
-            # Retrieve step results from the environments
-            for w, worker in enumerate(self.workers):
-                obs, self.buffer.rewards[w, t], self.buffer.dones[w, t], info = worker.child.recv()
-                if info: # i.e. done
-                    # Reset the worker's current timestep
-                    self.worker_current_episode_step[w] = 0
-                    # Store the information of the completed episode (e.g. total reward, episode length)
-                    episode_infos.append(info)
-                    # Reset the agent (potential interface for providing reset parameters)
-                    worker.child.send(("reset", None))
-                    # Get data from reset
-                    obs = worker.child.recv()
-                    # Break the reference to the worker's memory
-                    mem_index = self.buffer.memory_index[w, t]
-                    self.buffer.memories[mem_index] = self.buffer.memories[mem_index].clone()
-                    # Reset episodic memory
-                    self.memory[w] = torch.zeros((self.max_episode_length, self.num_blocks, self.embed_dim), dtype=torch.float32)
-                    if t < self.config["worker_steps"] - 1:
-                        # Store memory inside the buffer
-                        self.buffer.memories.append(self.memory[w])
-                        # Store the reference of to the current episodic memory inside the buffer
-                        self.buffer.memory_index[w, t + 1:] = len(self.buffer.memories) - 1
-                else:
-                    # Increment worker timestep
-                    self.worker_current_episode_step[w] +=1
-                # Store latest observations
-                self.obs[w] = obs
-                            
-        # Compute the last value of the current observation and memory window to compute GAE
-        last_value = self.get_last_value()
-        # Compute advantages
-        self.buffer.calc_advantages(last_value, self.config["gamma"], self.config["lamda"])
-
-        return episode_infos
-
-    def get_last_value(self):
-        """Returns:
-                {torch.tensor} -- Last value of the current observation and memory window to compute GAE"""
-        start = torch.clip(self.worker_current_episode_step - self.memory_length, 0)
-        end = torch.clip(self.worker_current_episode_step, self.memory_length)
-        indices = torch.stack([torch.arange(start[b],end[b]) for b in range(self.num_workers)]).long()
-        sliced_memory = batched_index_select(self.memory, 1, indices) # Retrieve the memory window from the entire episode
-        _, last_value, _ = self.model(torch.tensor(self.obs),
-                                        sliced_memory, self.memory_mask[torch.clip(self.worker_current_episode_step, 0, self.memory_length - 1)],
-                                        self.buffer.memory_indices[:,-1])
-        return last_value
 
     def _train_epochs(self, learning_rate:float, clip_range:float, beta:float) -> list:
         """Trains several PPO epochs over one batch of data while dividing the batch into mini batches.
