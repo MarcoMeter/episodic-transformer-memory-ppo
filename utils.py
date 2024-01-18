@@ -48,31 +48,6 @@ def polynomial_decay(initial:float, final:float, max_decay_steps:int, power:floa
     # Return the polynomially decayed value given the current step
     else:
         return  ((initial - final) * ((1 - current_step / max_decay_steps) ** power) + final)
-    
-def batched_index_select(input, dim, index):
-    """
-    Selects values from the input tensor at the given indices along the given dimension.
-    This function is similar to torch.index_select, but it supports batched indices.
-    The input tensor is expected to be of shape (batch_size, ...), where ... means any number of additional dimensions.
-    The indices tensor is expected to be of shape (batch_size, num_indices), where num_indices is the number of indices to select for each element in the batch.
-    The output tensor is of shape (batch_size, num_indices, ...), where ... means any number of additional dimensions that were present in the input tensor.
-
-    Arguments:
-        input {torch.tensor} -- Input tensor
-        dim {int} -- Dimension along which to select values
-        index {torch.tensor} -- Tensor containing the indices to select
-
-    Returns:
-        {torch.tensor} -- Output tensor
-    """
-    for ii in range(1, len(input.shape)):
-        if ii != dim:
-            index = index.unsqueeze(ii)
-    expanse = list(input.shape)
-    expanse[0] = -1
-    expanse[dim] = -1
-    index = index.expand(expanse)
-    return torch.gather(input, dim, index)
 
 def process_episode_info(episode_info:list) -> dict:
     """Extracts the mean and std of completed episode statistics like length and total reward.

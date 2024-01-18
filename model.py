@@ -13,17 +13,8 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 class Agent(nn.Module):
     def __init__(self, config, observation_space, action_space_shape, max_episode_steps):
-        """Model setup
-
-        Arguments:
-            config {dict} -- Configuration and hyperparameters of the environment, trainer and model.
-            observation_space {box} -- Properties of the agent's observation space
-            action_space_shape {tuple} -- Dimensions of the action space
-            max_episode_length {int} -- The maximum number of steps in an episode
-        """
         super().__init__()
-        self.hidden_size = config["hidden_layer_size"]
-        self.memory_layer_size = config["transformer"]["embed_dim"]
+        conf = config["transformer"]
         self.observation_space_shape = observation_space.shape
         self.max_episode_steps = max_episode_steps
 
@@ -45,15 +36,15 @@ class Agent(nn.Module):
             # Case: vector observation is available
             in_features_next_layer = observation_space.shape[0]
 
-        self.lin_hidden = layer_init(nn.Linear(in_features_next_layer, self.memory_layer_size))
+        self.lin_hidden = layer_init(nn.Linear(in_features_next_layer, conf["embed_dim"]))
 
-        self.transformer = Transformer(config["transformer"], self.memory_layer_size, self.max_episode_steps)
+        self.transformer = Transformer(conf["num_blocks"], conf["embed_dim"], conf["num_heads"], self.max_episode_steps, conf["positional_encoding"])
 
         self.actor_branches = nn.ModuleList([
-            layer_init(nn.Linear(self.hidden_size, out_features=num_actions), np.sqrt(0.01))
+            layer_init(nn.Linear(conf["embed_dim"], out_features=num_actions), np.sqrt(0.01))
             for num_actions in action_space_shape
         ])
-        self.critic = layer_init(nn.Linear(self.hidden_size, 1), 1)
+        self.critic = layer_init(nn.Linear(conf["embed_dim"], 1), 1)
 
     def forward(self, obs, memory, memory_mask, memory_indices):
         h = obs
@@ -126,13 +117,13 @@ class MultiHeadAttention(nn.Module):
         return out, attention
         
 class TransformerBlock(nn.Module):
-    def __init__(self, embed_dim, num_heads):
-        super(TransformerBlock, self).__init__()
-        self.attention = MultiHeadAttention(embed_dim, num_heads)
-        self.layer_norm_q = nn.LayerNorm(embed_dim)
-        self.norm_kv = nn.LayerNorm(embed_dim)
-        self.layer_norm_attn = nn.LayerNorm(embed_dim)
-        self.fc_projection = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU())
+    def __init__(self, dim, num_heads):
+        super().__init__()
+        self.attention = MultiHeadAttention(dim, num_heads)
+        self.layer_norm_q = nn.LayerNorm(dim)
+        self.norm_kv = nn.LayerNorm(dim)
+        self.layer_norm_attn = nn.LayerNorm(dim)
+        self.fc_projection = nn.Sequential(nn.Linear(dim, dim), nn.ReLU())
 
     def forward(self, value, key, query, mask):
         # Pre-layer normalization (post-layer normalization is usually less effective)
@@ -142,13 +133,13 @@ class TransformerBlock(nn.Module):
         # Forward MultiHeadAttention
         attention, attention_weights = self.attention(value, key, query_, mask)
         # Skip connection
-        h = attention + query
+        x = attention + query
         # Pre-layer normalization
-        h_ = self.layer_norm_attn(h)
+        x_ = self.layer_norm_attn(x)
         # Forward projection
-        forward = self.fc_projection(h_)
+        forward = self.fc_projection(x_)
         # Skip connection
-        out = forward + h
+        out = forward + x
         return out, attention_weights
 
 class PositionalEncoding(nn.Module):
@@ -165,62 +156,30 @@ class PositionalEncoding(nn.Module):
         return pos_emb
 
 class Transformer(nn.Module):
-    """Transformer encoder architecture without dropout. Positional encoding can be either "relative", "learned" or "" (none)."""
-    def __init__(self, config, input_dim, max_episode_steps) -> None:
+    def __init__(self, num_blocks, dim, num_heads, max_episode_steps, positional_encoding):
         super().__init__()
-        self.config = config
-        self.num_blocks = config["num_blocks"]
-        self.embed_dim = config["embed_dim"]
-        self.num_heads = config["num_heads"]
         self.max_episode_steps = max_episode_steps
-        self.activation = nn.ReLU()
+        self.positional_encoding = positional_encoding
+        if positional_encoding == "absolute":
+            self.pos_embedding = PositionalEncoding(dim)
+        elif positional_encoding == "learned":
+            self.pos_embedding = nn.Parameter(torch.randn(max_episode_steps, dim))
+        self.transformer_blocks = nn.ModuleList([TransformerBlock(dim, num_heads) for _ in range(num_blocks)])
 
-        # Input embedding layer
-        self.linear_embedding = nn.Linear(input_dim, self.embed_dim)
-        nn.init.orthogonal_(self.linear_embedding.weight, np.sqrt(2))
-
-        # Determine positional encoding
-        if config["positional_encoding"] == "absolute":
-            self.pos_embedding = PositionalEncoding(dim = self.embed_dim)
-        elif config["positional_encoding"] == "learned":
-            self.pos_embedding = nn.Parameter(torch.randn(self.max_episode_steps, self.embed_dim)) # (batch size, max episoded steps, num layers, layer size)
-        else:
-            pass    # No positional encoding is used
-        
-        # Instantiate transformer blocks
-        self.transformer_blocks = nn.ModuleList([
-            TransformerBlock(self.embed_dim, self.num_heads) 
-            for _ in range(self.num_blocks)])
-
-    def forward(self, h, memories, mask, memory_indices):
-        """
-        Arguments:
-            h {torch.tensor} -- Input (query)
-            memories {torch.tesnor} -- Whole episoded memories of shape (N, L, num blocks, D)
-            mask {torch.tensor} -- Attention mask (dtype: bool) of shape (N, L)
-            memory_indices {torch.tensor} -- Memory window indices (dtype: long) of shape (N, L)
-        Returns:
-            {torch.tensor} -- Output of the entire transformer encoder
-            {torch.tensor} -- Out memories (i.e. inputs to the transformer blocks)
-        """
-        # Feed embedding layer and activate
-        h = self.activation(self.linear_embedding(h))
-
+    def forward(self, x, memories, mask, memory_indices):
         # Add positional encoding to every transformer block input
-        if self.config["positional_encoding"] == "relative":
+        if self.positional_encoding == "absolute":
             pos_embedding = self.pos_embedding(self.max_episode_steps)[memory_indices]
             memories = memories + pos_embedding.unsqueeze(2)
-            # memories[:,:,0] = memories[:,:,0] + pos_embedding # add positional encoding only to first layer?
-        elif self.config["positional_encoding"] == "learned":
+        elif self.positional_encoding == "learned":
             memories = memories + self.pos_embedding[memory_indices].unsqueeze(2)
-            # memories[:,:,0] = memories[:,:,0] + self.pos_embedding[memory_indices] # add positional encoding only to first layer?
 
-        # Forward transformer blocks
+        # Forward transformer blocks and return new memories (i.e. hidden states)
         out_memories = []
         for i, block in enumerate(self.transformer_blocks):
-            out_memories.append(h.detach())
-            h, attention_weights = block(memories[:, :, i], memories[:, :, i], h.unsqueeze(1), mask) # args: value, key, query, mask
-            h = h.squeeze()
-            if len(h.shape) == 1:
-                h = h.unsqueeze(0)
-        return h, torch.stack(out_memories, dim=1)
+            out_memories.append(x.detach())
+            x, attention_weights = block(memories[:, :, i], memories[:, :, i], x.unsqueeze(1), mask) # args: value, key, query, mask
+            x = x.squeeze()
+            if len(x.shape) == 1:
+                x = x.unsqueeze(0)
+        return x, torch.stack(out_memories, dim=1)

@@ -10,8 +10,18 @@ from torch.utils.tensorboard import SummaryWriter
 
 from buffer import Buffer
 from model import Agent
-from utils import batched_index_select, create_env, polynomial_decay, process_episode_info
+from utils import create_env, polynomial_decay, process_episode_info
 from worker import Worker
+
+def batched_index_select(input, dim, index):
+    for ii in range(1, len(input.shape)):
+        if ii != dim:
+            index = index.unsqueeze(ii)
+    expanse = list(input.shape)
+    expanse[0] = -1
+    expanse[dim] = -1
+    index = index.expand(expanse)
+    return torch.gather(input, dim, index)
 
 class PPOTrainer:
     def __init__(self, config:dict, run_id:str="run", device:torch.device=torch.device("cpu")) -> None:
