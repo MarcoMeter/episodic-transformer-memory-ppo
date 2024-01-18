@@ -3,7 +3,7 @@ import pickle
 import torch
 
 from docopt import docopt
-from model import ActorCriticModel
+from model import Agent
 from utils import create_env
 
 def init_transformer_memory(trxl_conf, max_episode_steps, device):
@@ -51,7 +51,7 @@ def main():
     env = create_env(config["environment"], render=True)
 
     # Initialize model and load its parameters
-    model = ActorCriticModel(config, env.observation_space, (env.action_space.n,), env.max_episode_steps)
+    model = Agent(config, env.observation_space, (env.action_space.n,), env.max_episode_steps)
     model.load_state_dict(state_dict)
     model.to(device)
     model.eval()

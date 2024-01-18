@@ -28,10 +28,7 @@ transformer:
     embed_dim: 384
     num_heads: 4
     memory_length: 118
-    positional_encoding: "relative"
-    layer_norm: "pre"
-    gtrxl: False
-    gtrxl_bias: 0.0
+    positional_encoding: "absolute"
 learning_rate_schedule:
     initial: 2.5e-4
     final: 1.0e-5

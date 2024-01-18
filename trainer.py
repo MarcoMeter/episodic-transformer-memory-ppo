@@ -9,7 +9,7 @@ from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 
 from buffer import Buffer
-from model import ActorCriticModel
+from model import Agent
 from utils import batched_index_select, create_env, polynomial_decay, process_episode_info
 from worker import Worker
 
@@ -54,7 +54,7 @@ class PPOTrainer:
 
         # Init model
         print("Step 3: Init model and optimizer")
-        self.model = ActorCriticModel(self.config, observation_space, self.action_space_shape, self.max_episode_length).to(self.device)
+        self.model = Agent(self.config, observation_space, self.action_space_shape, self.max_episode_length).to(self.device)
         self.model.train()
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.lr_schedule["initial"])
 
@@ -117,7 +117,7 @@ class PPOTrainer:
             self.buffer.prepare_batch_dict()
 
             # Train epochs
-            training_stats, grad_info = self._train_epochs(learning_rate, clip_range, beta)
+            training_stats = self._train_epochs(learning_rate, clip_range, beta)
             training_stats = np.mean(training_stats, axis=0)
 
             # Store recent episode infos
@@ -136,7 +136,6 @@ class PPOTrainer:
             print(result)
 
             # Write training statistics to tensorboard
-            self._write_gradient_summary(update, grad_info)
             self._write_training_summary(update, training_stats, episode_result)
 
         # Save the trained model at the end of the training
@@ -246,14 +245,12 @@ class PPOTrainer:
             
         Returns:
             {tuple} -- Training and gradient statistics of one training epoch"""
-        train_info, grad_info = [], {}
+        train_info = []
         for _ in range(self.config["epochs"]):
             mini_batch_generator = self.buffer.mini_batch_generator()
             for mini_batch in mini_batch_generator:
                 train_info.append(self._train_mini_batch(mini_batch, learning_rate, clip_range, beta))
-                for key, value in self.model.get_grad_norm().items():
-                    grad_info.setdefault(key, []).append(value)
-        return train_info, grad_info
+        return train_info
 
     def _train_mini_batch(self, samples:dict, learning_rate:float, clip_range:float, beta:float) -> list:
         """Uses one mini batch to optimize the model.
@@ -342,16 +339,6 @@ class PPOTrainer:
         self.writer.add_scalar("training/advantage_mean", torch.mean(self.buffer.advantages), update)
         self.writer.add_scalar("other/clip_fraction", training_stats[4], update)
         self.writer.add_scalar("other/kl", training_stats[5], update)
-        
-    def _write_gradient_summary(self, update, grad_info):
-        """Adds gradient statistics to the tensorboard event file.
-
-        Arguments:
-            update {int} -- Current PPO Update
-            grad_info {dict} -- Gradient statistics
-        """
-        for key, value in grad_info.items():
-            self.writer.add_scalar("gradients/" + key, np.mean(value), update)
 
     def _save_model(self) -> None:
         """Saves the model and the used training config to the models directory. The filename is based on the run id."""
