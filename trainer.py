@@ -205,11 +205,80 @@ class PPOTrainer:
                     last_value = self.buffer.values[:, t]
 
             # Prepare the sampled data inside the buffer (splits data into sequences)
-            self.buffer.prepare_batch_dict()
+            b_obs = self.buffer.obs.reshape(-1, *self.buffer.obs.shape[2:])
+            b_logprobs = self.buffer.log_probs.reshape(-1, *self.buffer.log_probs.shape[2:])
+            b_actions = self.buffer.actions.reshape(-1, *self.buffer.actions.shape[2:])
+            b_advantages = self.buffer.advantages.reshape(-1)
+            b_values = self.buffer.values.reshape(-1)
+            b_memory_index = self.buffer.memory_index.reshape(-1)
+            b_memory_indices = self.buffer.memory_indices.reshape(-1, *self.buffer.memory_indices.shape[2:])
+            b_memory_mask = self.buffer.memory_mask.reshape(-1, *self.buffer.memory_mask.shape[2:])
+            self.buffer.memories = torch.stack(self.buffer.memories, dim=0)
 
             # Train epochs
-            training_stats = self._train_epochs(self.config["learning_rate"], self.config["clip_range"], self.config["beta"])
-            training_stats = np.mean(training_stats, axis=0)
+            train_info = []
+            for epoch in range(self.config["epochs"]):
+                b_inds = torch.randperm(self.buffer.batch_size)
+                for start in range(0, self.buffer.batch_size, self.buffer.mini_batch_size):
+                    end = start + self.buffer.mini_batch_size
+                    mb_inds = b_inds[start: end]
+                    mb_memories = self.buffer.memories[b_memory_index[mb_inds]]
+
+                    # Select episodic memory windows
+                    memory = batched_index_select(mb_memories, 1, b_memory_indices[mb_inds])
+                    # Forward model
+                    policy, value, _ = self.model(b_obs[mb_inds], memory, b_memory_mask[mb_inds], b_memory_indices[mb_inds])
+
+                    # Retrieve and process log_probs from each policy branch
+                    log_probs, entropies = [], []
+                    for i, policy_branch in enumerate(policy):
+                        log_probs.append(policy_branch.log_prob(b_actions[mb_inds][:, i]))
+                        entropies.append(policy_branch.entropy())
+                    log_probs = torch.stack(log_probs, dim=1)
+                    entropies = torch.stack(entropies, dim=1).sum(1).reshape(-1)
+
+                    # Compute policy surrogates to establish the policy loss
+                    normalized_advantage = (b_advantages[mb_inds] - b_advantages[mb_inds].mean()) / (b_advantages[mb_inds].std() + 1e-8)
+                    normalized_advantage = normalized_advantage.unsqueeze(1).repeat(1, len(self.action_space_shape)) # Repeat is necessary for multi-discrete action spaces
+                    log_ratio = log_probs - b_logprobs[mb_inds]
+                    ratio = torch.exp(log_ratio)
+                    surr1 = ratio * normalized_advantage
+                    surr2 = torch.clamp(ratio, 1.0 - self.config["clip_range"], 1.0 + self.config["clip_range"]) * normalized_advantage
+                    policy_loss = torch.min(surr1, surr2)
+                    policy_loss = policy_loss.mean()
+
+                    # Value  function loss
+                    sampled_return = b_values[mb_inds] + b_advantages[mb_inds]
+                    clipped_value = b_values[mb_inds] + (value - b_values[mb_inds]).clamp(min=-self.config["clip_range"], max=self.config["clip_range"])
+                    vf_loss = torch.max((value - sampled_return) ** 2, (clipped_value - sampled_return) ** 2)
+                    vf_loss = vf_loss.mean()
+
+                    # Entropy Bonus
+                    entropy_bonus = entropies.mean()
+
+                    # Complete loss
+                    loss = -(policy_loss - self.config["value_loss_coefficient"] * vf_loss + self.config["beta"] * entropy_bonus)
+
+                    # Compute gradients
+                    for pg in self.optimizer.param_groups:
+                        pg["lr"] = self.config["learning_rate"]
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config["max_grad_norm"])
+                    self.optimizer.step()
+
+                    # Monitor additional training stats
+                    approx_kl = (ratio - 1.0) - log_ratio # http://joschu.net/blog/kl-approx.html
+                    clip_fraction = (abs((ratio - 1.0)) > self.config["clip_range"]).float().mean()
+
+                    train_info.append([policy_loss.cpu().data.numpy(),
+                            vf_loss.cpu().data.numpy(),
+                            loss.cpu().data.numpy(),
+                            entropy_bonus.cpu().data.numpy(),
+                            approx_kl.mean().cpu().data.numpy(),
+                            clip_fraction.cpu().data.numpy()])
+
+            training_stats = np.mean(train_info, axis=0)
 
             # Store recent episode infos
             episode_infos.extend(sampled_episode_info)
@@ -231,90 +300,6 @@ class PPOTrainer:
 
         # Save the trained model at the end of the training
         self._save_model()
-
-    def _train_epochs(self, learning_rate:float, clip_range:float, beta:float) -> list:
-        """Trains several PPO epochs over one batch of data while dividing the batch into mini batches.
-        
-        Arguments:
-            learning_rate {float} -- The current learning rate
-            clip_range {float} -- The current clip range
-            beta {float} -- The current entropy bonus coefficient
-            
-        Returns:
-            {tuple} -- Training and gradient statistics of one training epoch"""
-        train_info = []
-        for _ in range(self.config["epochs"]):
-            mini_batch_generator = self.buffer.mini_batch_generator()
-            for mini_batch in mini_batch_generator:
-                train_info.append(self._train_mini_batch(mini_batch, learning_rate, clip_range, beta))
-        return train_info
-
-    def _train_mini_batch(self, samples:dict, learning_rate:float, clip_range:float, beta:float) -> list:
-        """Uses one mini batch to optimize the model.
-
-        Arguments:
-            mini_batch {dict} -- The to be used mini batch data to optimize the model
-            learning_rate {float} -- Current learning rate
-            clip_range {float} -- Current clip range
-            beta {float} -- Current entropy bonus coefficient
-
-        Returns:
-            {list} -- list of trainig statistics (e.g. loss)
-        """
-        # Select episodic memory windows
-        memory = batched_index_select(samples["memories"], 1, samples["memory_indices"])
-        
-        # Forward model
-        policy, value, _ = self.model(samples["obs"], memory, samples["memory_mask"], samples["memory_indices"])
-
-        # Retrieve and process log_probs from each policy branch
-        log_probs, entropies = [], []
-        for i, policy_branch in enumerate(policy):
-            log_probs.append(policy_branch.log_prob(samples["actions"][:, i]))
-            entropies.append(policy_branch.entropy())
-        log_probs = torch.stack(log_probs, dim=1)
-        entropies = torch.stack(entropies, dim=1).sum(1).reshape(-1)
-
-        # Compute policy surrogates to establish the policy loss
-        normalized_advantage = (samples["advantages"] - samples["advantages"].mean()) / (samples["advantages"].std() + 1e-8)
-        normalized_advantage = normalized_advantage.unsqueeze(1).repeat(1, len(self.action_space_shape)) # Repeat is necessary for multi-discrete action spaces
-        log_ratio = log_probs - samples["log_probs"]
-        ratio = torch.exp(log_ratio)
-        surr1 = ratio * normalized_advantage
-        surr2 = torch.clamp(ratio, 1.0 - clip_range, 1.0 + clip_range) * normalized_advantage
-        policy_loss = torch.min(surr1, surr2)
-        policy_loss = policy_loss.mean()
-
-        # Value  function loss
-        sampled_return = samples["values"] + samples["advantages"]
-        clipped_value = samples["values"] + (value - samples["values"]).clamp(min=-clip_range, max=clip_range)
-        vf_loss = torch.max((value - sampled_return) ** 2, (clipped_value - sampled_return) ** 2)
-        vf_loss = vf_loss.mean()
-
-        # Entropy Bonus
-        entropy_bonus = entropies.mean()
-
-        # Complete loss
-        loss = -(policy_loss - self.config["value_loss_coefficient"] * vf_loss + beta * entropy_bonus)
-
-        # Compute gradients
-        for pg in self.optimizer.param_groups:
-            pg["lr"] = learning_rate
-        self.optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config["max_grad_norm"])
-        self.optimizer.step()
-
-        # Monitor additional training stats
-        approx_kl = (ratio - 1.0) - log_ratio # http://joschu.net/blog/kl-approx.html
-        clip_fraction = (abs((ratio - 1.0)) > clip_range).float().mean()
-
-        return [policy_loss.cpu().data.numpy(),
-                vf_loss.cpu().data.numpy(),
-                loss.cpu().data.numpy(),
-                entropy_bonus.cpu().data.numpy(),
-                approx_kl.mean().cpu().data.numpy(),
-                clip_fraction.cpu().data.numpy()]
 
     def _write_training_summary(self, update, training_stats, episode_result) -> None:
         """Writes to an event file based on the run-id argument.
