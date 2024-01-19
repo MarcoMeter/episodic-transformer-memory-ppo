@@ -3,7 +3,7 @@ import multiprocessing.connection
 
 from utils import create_env
 
-def worker_process(remote: multiprocessing.connection.Connection, config:dict) -> None:
+def worker_process(remote: multiprocessing.connection.Connection, args) -> None:
     """Executes the threaded interface to the environment.
     
     Arguments:
@@ -12,7 +12,7 @@ def worker_process(remote: multiprocessing.connection.Connection, config:dict) -
     """
     # Spawn training environment
     try:
-        env = create_env(config)
+        env = create_env(args)
     except KeyboardInterrupt:
         pass
 

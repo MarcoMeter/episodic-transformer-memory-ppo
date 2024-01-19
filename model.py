@@ -12,9 +12,8 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     return layer
 
 class Agent(nn.Module):
-    def __init__(self, config, observation_space, action_space_shape, max_episode_steps):
+    def __init__(self, args, observation_space, action_space_shape, max_episode_steps):
         super().__init__()
-        conf = config["transformer"]
         self.observation_space_shape = observation_space.shape
         self.max_episode_steps = max_episode_steps
 
@@ -36,15 +35,15 @@ class Agent(nn.Module):
             # Case: vector observation is available
             in_features_next_layer = observation_space.shape[0]
 
-        self.lin_hidden = layer_init(nn.Linear(in_features_next_layer, conf["embed_dim"]))
+        self.lin_hidden = layer_init(nn.Linear(in_features_next_layer, args.trxl_dim))
 
-        self.transformer = Transformer(conf["num_blocks"], conf["embed_dim"], conf["num_heads"], self.max_episode_steps, conf["positional_encoding"])
+        self.transformer = Transformer(args.trxl_num_blocks, args.trxl_dim, args.trxl_num_heads, self.max_episode_steps, args.trxl_positional_encoding)
 
         self.actor_branches = nn.ModuleList([
-            layer_init(nn.Linear(conf["embed_dim"], out_features=num_actions), np.sqrt(0.01))
+            layer_init(nn.Linear(args.trxl_dim, out_features=num_actions), np.sqrt(0.01))
             for num_actions in action_space_shape
         ])
-        self.critic = layer_init(nn.Linear(conf["embed_dim"], 1), 1)
+        self.critic = layer_init(nn.Linear(args.trxl_dim, 1), 1)
 
     def forward(self, obs, memory, memory_mask, memory_indices):
         h = obs

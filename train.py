@@ -1,9 +1,7 @@
 import os
 import time
 import torch
-from docopt import docopt
-# import tyro
-from yaml_parser import YamlParser
+import tyro
 from dataclasses import dataclass
 
 import numpy as np
@@ -37,15 +35,17 @@ class Args:
     """whether to capture videos of the agent performances (check out `videos` folder)"""
 
     # Algorithm specific arguments
-    env_id: str = "MysteryPath-Grid-v0"
+    env_type: str = "PocMemoryEnv"
+    """test"""
+    env_id: str = "MysteryPath-Grid-v0" # CartPoleMasked CartPoleMasked MiniGrid-MemoryS9-v0 MysteryPath-Grid-v0 MortarMayhem-Grid-v0
     """the id of the environment"""
     total_timesteps: int = 10000000
     """total timesteps of the experiments"""
-    learning_rate: float = 2.75e-4
+    learning_rate: float = 3.0e-4
     """the learning rate of the optimizer"""
     num_envs: int = 16
     """the number of parallel game environments"""
-    num_steps: int = 512
+    num_steps: int = 128
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -55,11 +55,11 @@ class Args:
     """the lambda for the general advantage estimation"""
     num_minibatches: int = 8
     """the number of mini-batches"""
-    update_epochs: int = 3
+    update_epochs: int = 4
     """the K epochs to update the policy"""
     norm_adv: bool = False
     """Toggles advantages normalization"""
-    clip_coef: float = 0.1
+    clip_coef: float = 0.2
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
@@ -67,7 +67,7 @@ class Args:
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
-    max_grad_norm: float = 0.25
+    max_grad_norm: float = 0.5
     """the maximum norm for the gradient clipping"""
     target_kl: float = None
     """the target KL divergence threshold"""
@@ -77,9 +77,9 @@ class Args:
     """the number of heads used in multi-head attention"""
     trxl_dim: int = 384
     """the dimension of the transformer"""
-    trxl_memory_length: int = 96
+    trxl_memory_length: int = 32
     """the length of TrXL's sliding memory window"""
-    trxl_positional_encoding: str = "absolute"
+    trxl_positional_encoding: str = ""
     """the positional encoding type of the transformer, choices: "", "absolute", "learned" """
 
     # to be filled in runtime
@@ -101,25 +101,14 @@ def batched_index_select(input, dim, index):
     return torch.gather(input, dim, index)
 
 if __name__ == "__main__":
-    # Command line arguments via docopt
-    _USAGE = """
-    Usage:
-        train.py [options]
-        train.py --help
-    
-    Options:
-        --config=<path>            Path to the yaml config file [default: ./configs/poc_memory_env.yaml]
-        --run-id=<path>            Specifies the tag for saving the tensorboard summary [default: run].
-        --cpu                      Force training on CPU [default: False]
-    """
-    options = docopt(_USAGE)
-    run_id = options["--run-id"]
-    cpu = options["--cpu"]
-    # Parse the yaml config file. The result is a dictionary, which is passed to the trainer.
-    config = YamlParser(options["--config"]).get_config()
+    args = tyro.cli(Args)
+    args.batch_size = int(args.num_envs * args.num_steps)
+    args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    args.num_iterations = args.total_timesteps // args.batch_size
+    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
     # Determine the device to be used for training and set the default tensor type
-    if not cpu:
+    if args.cuda:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if torch.cuda.is_available():
             torch.set_default_tensor_type("torch.cuda.FloatTensor")
@@ -127,80 +116,65 @@ if __name__ == "__main__":
         device = torch.device("cpu")
         torch.set_default_tensor_type("torch.FloatTensor")
 
-    # Set members
-    num_workers = config["n_workers"]
-    memory_length = config["transformer"]["memory_length"]
-    num_blocks = config["transformer"]["num_blocks"]
-    embed_dim = config["transformer"]["embed_dim"]
-
     # Setup Tensorboard Summary Writer
     if not os.path.exists("./summaries"):
         os.makedirs("./summaries")
     timestamp = time.strftime("/%Y%m%d-%H%M%S" + "/")
-    writer = SummaryWriter("./summaries/" + run_id + timestamp)
+    writer = SummaryWriter("./summaries/" + "x_" + timestamp)
 
     # Init dummy environment to retrieve action space, observation space and max episode length
     print("Step 1: Init dummy environment")
-    dummy_env = create_env(config["environment"])
+    dummy_env = create_env(args)
     observation_space = dummy_env.observation_space
     action_space_shape = (dummy_env.action_space.n,)
-    max_episode_length = dummy_env.max_episode_steps
+    max_episode_steps = dummy_env.max_episode_steps
     dummy_env.close()
 
-    # Init buffer
+    # Init buffer fields
     print("Step 2: Init buffer")
-    worker_steps = config["worker_steps"]
-    n_mini_batches = config["n_mini_batch"]
-    batch_size = num_workers * worker_steps
-    mini_batch_size = batch_size // n_mini_batches
-    memory_length = config["transformer"]["memory_length"]
-    num_blocks = config["transformer"]["num_blocks"]
-    embed_dim = config["transformer"]["embed_dim"]
-
-    # Initialize the buffer's data storage
-    rewards = np.zeros((num_workers, worker_steps), dtype=np.float32)
-    actions = torch.zeros((num_workers, worker_steps, len(action_space_shape)), dtype=torch.long)
-    dones = np.zeros((num_workers, worker_steps), dtype=np.bool)
-    obs = torch.zeros((num_workers, worker_steps) + observation_space.shape)
-    log_probs = torch.zeros((num_workers, worker_steps, len(action_space_shape)))
-    values = torch.zeros((num_workers, worker_steps))
-    advantages = torch.zeros((num_workers, worker_steps))
+    rewards = np.zeros((args.num_envs, args.num_steps), dtype=np.float32)
+    actions = torch.zeros((args.num_envs, args.num_steps, len(action_space_shape)), dtype=torch.long)
+    dones = np.zeros((args.num_envs, args.num_steps), dtype=np.bool)
+    obs = torch.zeros((args.num_envs, args.num_steps) + observation_space.shape)
+    log_probs = torch.zeros((args.num_envs, args.num_steps, len(action_space_shape)))
+    values = torch.zeros((args.num_envs, args.num_steps))
+    advantages = torch.zeros((args.num_envs, args.num_steps))
     # Episodic memory index buffer
     # Whole episode memories
     # The length of memories is equal to the number of sampled episodes during training data sampling
     # Each element is of shape (max_episode_length, num_blocks, embed_dim)
     stored_memories = []
     # Memory mask used during attention
-    stored_memory_masks = torch.zeros((num_workers, worker_steps, memory_length), dtype=torch.bool)
+    stored_memory_masks = torch.zeros((args.num_envs, args.num_steps, args.trxl_memory_length), dtype=torch.bool)
     # Index to select the correct episode memory from memories
-    stored_memory_index = torch.zeros((num_workers, worker_steps), dtype=torch.long)
+    stored_memory_index = torch.zeros((args.num_envs, args.num_steps), dtype=torch.long)
     # Indices to slice the memory window
-    stored_memory_indices = torch.zeros((num_workers, worker_steps, memory_length), dtype=torch.long)
+    stored_memory_indices = torch.zeros((args.num_envs, args.num_steps, args.trxl_memory_length), dtype=torch.long)
 
     # Init model
     print("Step 3: Init model and optimizer")
-    model = Agent(config, observation_space, action_space_shape, max_episode_length).to(device)
+    model = Agent(args, observation_space, action_space_shape, max_episode_steps).to(device)
     model.train()
-    optimizer = optim.AdamW(model.parameters(), lr=config["learning_rate"])
+    optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
 
     # Init workers
     print("Step 4: Init environment workers")
-    workers = [Worker(config["environment"]) for w in range(num_workers)]
-    worker_ids = range(num_workers)
-    worker_current_episode_step = torch.zeros((num_workers, ), dtype=torch.long)
+    workers = [Worker(args) for w in range(args.num_envs)]
+    worker_ids = range(args.num_envs)
+    worker_current_episode_step = torch.zeros((args.num_envs, ), dtype=torch.long)
     # Reset workers (i.e. environments)
     print("Step 5: Reset workers")
     for worker in workers:
         worker.child.send(("reset", None))
     # Grab initial observations and store them in their respective placeholder location
-    next_obs = np.zeros((num_workers,) + observation_space.shape, dtype=np.float32)
+    next_obs = np.zeros((args.num_envs,) + observation_space.shape, dtype=np.float32)
     for w, worker in enumerate(workers):
         next_obs[w] = worker.child.recv()
 
     # Setup placeholders for each worker's current episodic memory
-    next_memory = torch.zeros((num_workers, max_episode_length, num_blocks, embed_dim), dtype=torch.float32)
+    next_memory = torch.zeros((args.num_envs, max_episode_steps, args.trxl_num_blocks, args.trxl_dim), dtype=torch.float32)
     # Generate episodic memory mask used in attention
-    memory_mask = torch.tril(torch.ones((memory_length, memory_length)), diagonal=-1)
+    memory_mask = torch.tril(torch.ones((args.trxl_memory_length, args.trxl_memory_length)), diagonal=-1)
     """ e.g. memory mask tensor looks like this if memory_length = 6
     0, 0, 0, 0, 0, 0
     1, 0, 0, 0, 0, 0
@@ -210,8 +184,8 @@ if __name__ == "__main__":
     1, 1, 1, 1, 1, 0
     """         
     # Setup memory window indices to support a sliding window over the episodic memory
-    repetitions = torch.repeat_interleave(torch.arange(0, memory_length).unsqueeze(0), memory_length - 1, dim = 0).long()
-    memory_indices = torch.stack([torch.arange(i, i + memory_length) for i in range(max_episode_length - memory_length + 1)]).long()
+    repetitions = torch.repeat_interleave(torch.arange(0, args.trxl_memory_length).unsqueeze(0), args.trxl_memory_length - 1, dim = 0).long()
+    memory_indices = torch.stack([torch.arange(i, i + args.trxl_memory_length) for i in range(max_episode_steps - args.trxl_memory_length + 1)]).long()
     memory_indices = torch.cat((repetitions, memory_indices))
     """ e.g. the memory window indices tensor looks like this if memory_length = 4 and max_episode_length = 7:
     0, 1, 2, 3
@@ -227,23 +201,23 @@ if __name__ == "__main__":
     # Store episode results for monitoring statistics
     episode_infos = deque(maxlen=100)
 
-    for update in range(config["updates"]):
+    for update in range(args.num_iterations):
         # Sample training data
         sampled_episode_info = []
     
         # Init episodic memory buffer using each workers' current episodic memory
-        stored_memories = [next_memory[w] for w in range(num_workers)]
-        for w in range(num_workers):
+        stored_memories = [next_memory[w] for w in range(args.num_envs)]
+        for w in range(args.num_envs):
             stored_memory_index[w] = w
 
         # Sample actions from the model and collect experiences for optimization
-        for step in range(config["worker_steps"]):
+        for step in range(args.num_steps):
             # Gradients can be omitted for sampling training data
             with torch.no_grad():
                 # Store the initial observations inside the buffer
                 obs[:, step] = torch.tensor(next_obs)
                 # Store mask and memory indices inside the buffer
-                stored_memory_masks[:, step] = memory_mask[torch.clip(worker_current_episode_step, 0, memory_length - 1)]
+                stored_memory_masks[:, step] = memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)]
                 stored_memory_indices[:, step] = memory_indices[worker_current_episode_step]
                 # Retrieve the memory window from the entire episodic memory
                 memory_window = batched_index_select(next_memory, 1, stored_memory_indices[:,step])
@@ -286,8 +260,8 @@ if __name__ == "__main__":
                     mem_index = stored_memory_index[w, step]
                     stored_memories[mem_index] = stored_memories[mem_index].clone()
                     # Reset episodic memory
-                    next_memory[w] = torch.zeros((max_episode_length, num_blocks, embed_dim), dtype=torch.float32)
-                    if step < config["worker_steps"] - 1:
+                    next_memory[w] = torch.zeros((max_episode_steps, args.trxl_num_blocks, args.trxl_dim), dtype=torch.float32)
+                    if step < args.num_steps - 1:
                         # Store memory inside the buffer
                         stored_memories.append(next_memory[w])
                         # Store the reference of to the current episodic memory inside the buffer
@@ -299,12 +273,12 @@ if __name__ == "__main__":
                 next_obs[w] = o
                             
         # Compute the last value of the current observation and memory window to compute GAE
-        start = torch.clip(worker_current_episode_step - memory_length, 0)
-        end = torch.clip(worker_current_episode_step, memory_length)
-        indices = torch.stack([torch.arange(start[b],end[b]) for b in range(num_workers)]).long()
+        start = torch.clip(worker_current_episode_step - args.trxl_memory_length, 0)
+        end = torch.clip(worker_current_episode_step, args.trxl_memory_length)
+        indices = torch.stack([torch.arange(start[b],end[b]) for b in range(args.num_envs)]).long()
         memory_window = batched_index_select(next_memory, 1, indices) # Retrieve the memory window from the entire episode
         _, last_value, _ = model(torch.tensor(next_obs),
-                                        memory_window, memory_mask[torch.clip(worker_current_episode_step, 0, memory_length - 1)],
+                                        memory_window, memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)],
                                         stored_memory_indices[:,-1])
 
         # Compute advantages
@@ -312,11 +286,11 @@ if __name__ == "__main__":
             last_advantage = 0
             mask = torch.tensor(dones).logical_not() # mask values on terminal states
             rewards = torch.tensor(rewards)
-            for t in reversed(range(config["worker_steps"])):
+            for t in reversed(range(args.num_steps)):
                 last_value = last_value * mask[:, t]
                 last_advantage = last_advantage * mask[:, t]
-                delta = rewards[:, t] + config["gamma"] * last_value - values[:, t]
-                last_advantage = delta + config["gamma"] * config["lamda"] * last_advantage
+                delta = rewards[:, t] + args.gamma * last_value - values[:, t]
+                last_advantage = delta + args.gamma * args.gae_lambda * last_advantage
                 advantages[:, t] = last_advantage
                 last_value = values[:, t]
 
@@ -333,10 +307,10 @@ if __name__ == "__main__":
 
         # Train epochs
         train_info = []
-        for epoch in range(config["epochs"]):
-            b_inds = torch.randperm(batch_size)
-            for start in range(0, batch_size, mini_batch_size):
-                end = start + mini_batch_size
+        for epoch in range(args.update_epochs):
+            b_inds = torch.randperm(args.batch_size)
+            for start in range(0, args.batch_size, args.minibatch_size):
+                end = start + args.minibatch_size
                 mb_inds = b_inds[start: end]
                 mb_memories = stored_memories[b_memory_index[mb_inds]]
 
@@ -359,13 +333,13 @@ if __name__ == "__main__":
                 log_ratio = logprobs - b_logprobs[mb_inds]
                 ratio = torch.exp(log_ratio)
                 surr1 = ratio * normalized_advantage
-                surr2 = torch.clamp(ratio, 1.0 - config["clip_range"], 1.0 + config["clip_range"]) * normalized_advantage
+                surr2 = torch.clamp(ratio, 1.0 - args.clip_coef, 1.0 + args.clip_coef) * normalized_advantage
                 policy_loss = torch.min(surr1, surr2)
                 policy_loss = policy_loss.mean()
 
                 # Value  function loss
                 sampled_return = b_values[mb_inds] + b_advantages[mb_inds]
-                clipped_value = b_values[mb_inds] + (value - b_values[mb_inds]).clamp(min=-config["clip_range"], max=config["clip_range"])
+                clipped_value = b_values[mb_inds] + (value - b_values[mb_inds]).clamp(min=-args.clip_coef, max=args.clip_coef)
                 vf_loss = torch.max((value - sampled_return) ** 2, (clipped_value - sampled_return) ** 2)
                 vf_loss = vf_loss.mean()
 
@@ -373,19 +347,19 @@ if __name__ == "__main__":
                 entropy_bonus = entropies.mean()
 
                 # Complete loss
-                loss = -(policy_loss - config["value_loss_coefficient"] * vf_loss + config["beta"] * entropy_bonus)
+                loss = -(policy_loss - args.vf_coef * vf_loss + args.ent_coef * entropy_bonus)
 
                 # Compute gradients
                 for pg in optimizer.param_groups:
-                    pg["lr"] = config["learning_rate"]
+                    pg["lr"] = args.learning_rate
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=config["max_grad_norm"])
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.max_grad_norm)
                 optimizer.step()
 
                 # Monitor additional training stats
                 approx_kl = (ratio - 1.0) - log_ratio # http://joschu.net/blog/kl-approx.html
-                clip_fraction = (abs((ratio - 1.0)) > config["clip_range"]).float().mean()
+                clip_fraction = (abs((ratio - 1.0)) > args.clip_coef).float().mean()
 
                 train_info.append([policy_loss.cpu().data.numpy(),
                         vf_loss.cpu().data.numpy(),
@@ -429,8 +403,8 @@ if __name__ == "__main__":
     if not os.path.exists("./models"):
         os.makedirs("./models")
     model.cpu()
-    pickle.dump((model.state_dict(), config), open("./models/" + run_id + ".nn", "wb"))
-    print("Model saved to " + "./models/" + run_id + ".nn")
+    pickle.dump((model.state_dict(), args), open("./models/" +"x.nn", "wb"))
+    print("Model saved to " + "./models/" + "x.nn")
 
     # Close    
     try:

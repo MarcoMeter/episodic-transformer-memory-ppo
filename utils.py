@@ -5,26 +5,17 @@ from environments.memory_gym_env import MemoryGymWrapper
 from environments.minigrid_env import Minigrid
 from environments.poc_memory_env import PocMemoryEnv
 
-def create_env(config:dict, render:bool=False):
-    """Initializes an environment based on the provided environment name.
-    
-    Arguments:
-        env_name {str}: Name of the to be instantiated environment
-        render {bool}: Whether to instantiate the environment in render mode. (default: {False})
-
-    Returns:
-        {env}: Returns the selected environment instance.
-    """
-    if config["type"] == "PocMemoryEnv":
+def create_env(args, render:bool=False):
+    if args.env_type == "PocMemoryEnv":
         return PocMemoryEnv(glob=False, freeze=True, max_episode_steps=32)
-    if config["type"] == "CartPole":
+    if args.env_type == "CartPole":
         return CartPole(mask_velocity=False)
-    if config["type"] == "CartPoleMasked":
+    if args.env_type == "CartPoleMasked":
         return CartPole(mask_velocity=True)
-    if config["type"] == "Minigrid":
-        return Minigrid(config["name"])
-    if config["type"] in ["SearingSpotlights", "MortarMayhem", "MortarMayhem-Grid", "MysteryPath", "MysteryPath-Grid"]:
-        return MemoryGymWrapper(env_name = config["name"], reset_params=config["reset_params"], realtime_mode=render)
+    if args.env_type == "Minigrid":
+        return Minigrid(args.env_id)
+    if args.env_type in ["SearingSpotlights", "MortarMayhem", "MortarMayhem-Grid", "MysteryPath", "MysteryPath-Grid"]:
+        return MemoryGymWrapper(env_name = args.env_id, reset_params={}, realtime_mode=render)
 
 def process_episode_info(episode_info:list) -> dict:
     """Extracts the mean and std of completed episode statistics like length and total reward.
