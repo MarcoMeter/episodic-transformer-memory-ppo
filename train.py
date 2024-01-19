@@ -201,7 +201,7 @@ if __name__ == "__main__":
     # Store episode results for monitoring statistics
     episode_infos = deque(maxlen=100)
 
-    for update in range(args.num_iterations):
+    for iteration in range(1, args.num_iterations + 1):
         # Sample training data
         sampled_episode_info = []
     
@@ -377,11 +377,11 @@ if __name__ == "__main__":
         # Print training statistics
         if "success" in episode_result:
             result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} success={:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
-                update, episode_result["reward_mean"], episode_result["reward_std"], episode_result["length_mean"], episode_result["length_std"], episode_result["success"],
+                iteration, episode_result["reward_mean"], episode_result["reward_std"], episode_result["length_mean"], episode_result["length_std"], episode_result["success"],
                 training_stats[0], training_stats[1], training_stats[3], training_stats[2], torch.mean(values), torch.mean(advantages))
         else:
             result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
-                update, episode_result["reward_mean"], episode_result["reward_std"], episode_result["length_mean"], episode_result["length_std"], 
+                iteration, episode_result["reward_mean"], episode_result["reward_std"], episode_result["length_mean"], episode_result["length_std"], 
                 training_stats[0], training_stats[1], training_stats[3], training_stats[2], torch.mean(values), torch.mean(advantages))
         print(result)
 
@@ -389,15 +389,15 @@ if __name__ == "__main__":
         if episode_result:
             for key in episode_result:
                 if "std" not in key:
-                    writer.add_scalar("episode/" + key, episode_result[key], update)
-        writer.add_scalar("losses/loss", training_stats[2], update)
-        writer.add_scalar("losses/policy_loss", training_stats[0], update)
-        writer.add_scalar("losses/value_loss", training_stats[1], update)
-        writer.add_scalar("losses/entropy", training_stats[3], update)
-        writer.add_scalar("training/value_mean", torch.mean(values), update)
-        writer.add_scalar("training/advantage_mean", torch.mean(advantages), update)
-        writer.add_scalar("other/clip_fraction", training_stats[4], update)
-        writer.add_scalar("other/kl", training_stats[5], update)
+                    writer.add_scalar("episode/" + key, episode_result[key], iteration)
+        writer.add_scalar("losses/loss", training_stats[2], iteration)
+        writer.add_scalar("losses/policy_loss", training_stats[0], iteration)
+        writer.add_scalar("losses/value_loss", training_stats[1], iteration)
+        writer.add_scalar("losses/entropy", training_stats[3], iteration)
+        writer.add_scalar("training/value_mean", torch.mean(values), iteration)
+        writer.add_scalar("training/advantage_mean", torch.mean(advantages), iteration)
+        writer.add_scalar("other/clip_fraction", training_stats[4], iteration)
+        writer.add_scalar("other/kl", training_stats[5], iteration)
 
     # Save the trained model at the end of the training
     if not os.path.exists("./models"):
