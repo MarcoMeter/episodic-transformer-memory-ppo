@@ -32,8 +32,6 @@ def main():
 
     # Initialize the PPO trainer and commence training
     trainer = PPOTrainer(config, run_id=run_id, device=device)
-    trainer.run_training()
-    trainer.close()
 
 if __name__ == "__main__":
     main()

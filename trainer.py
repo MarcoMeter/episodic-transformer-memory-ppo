@@ -86,7 +86,7 @@ class PPOTrainer:
 
         # Init model
         print("Step 3: Init model and optimizer")
-        self.model = Agent(self.config, observation_space, self.action_space_shape, self.max_episode_length).to(self.device)
+        self.model = Agent(self.config, observation_space, self.action_space_shape, self.max_episode_length).to(device)
         self.model.train()
         self.optimizer = optim.AdamW(self.model.parameters(), lr=config["learning_rate"])
 
@@ -130,8 +130,6 @@ class PPOTrainer:
         3, 4, 5, 6
         """
 
-    def run_training(self) -> None:
-        """Runs the entire training logic from sampling data to optimizing the model. Only the final model is saved."""
         print("Step 6: Starting training using " + str(self.device))
         # Store episode results for monitoring statistics
         episode_infos = deque(maxlen=100)
@@ -321,42 +319,27 @@ class PPOTrainer:
             print(result)
 
             # Write training statistics to tensorboard
-            self._write_training_summary(update, training_stats, episode_result)
+            if episode_result:
+                for key in episode_result:
+                    if "std" not in key:
+                        self.writer.add_scalar("episode/" + key, episode_result[key], update)
+            self.writer.add_scalar("losses/loss", training_stats[2], update)
+            self.writer.add_scalar("losses/policy_loss", training_stats[0], update)
+            self.writer.add_scalar("losses/value_loss", training_stats[1], update)
+            self.writer.add_scalar("losses/entropy", training_stats[3], update)
+            self.writer.add_scalar("training/value_mean", torch.mean(self.values), update)
+            self.writer.add_scalar("training/advantage_mean", torch.mean(self.advantages), update)
+            self.writer.add_scalar("other/clip_fraction", training_stats[4], update)
+            self.writer.add_scalar("other/kl", training_stats[5], update)
 
         # Save the trained model at the end of the training
-        self._save_model()
-
-    def _write_training_summary(self, update, training_stats, episode_result) -> None:
-        """Writes to an event file based on the run-id argument.
-
-        Arguments:
-            update {int} -- Current PPO Update
-            training_stats {list} -- Statistics of the training algorithm
-            episode_result {dict} -- Statistics of completed episodes
-        """
-        if episode_result:
-            for key in episode_result:
-                if "std" not in key:
-                    self.writer.add_scalar("episode/" + key, episode_result[key], update)
-        self.writer.add_scalar("losses/loss", training_stats[2], update)
-        self.writer.add_scalar("losses/policy_loss", training_stats[0], update)
-        self.writer.add_scalar("losses/value_loss", training_stats[1], update)
-        self.writer.add_scalar("losses/entropy", training_stats[3], update)
-        self.writer.add_scalar("training/value_mean", torch.mean(self.values), update)
-        self.writer.add_scalar("training/advantage_mean", torch.mean(self.advantages), update)
-        self.writer.add_scalar("other/clip_fraction", training_stats[4], update)
-        self.writer.add_scalar("other/kl", training_stats[5], update)
-
-    def _save_model(self) -> None:
-        """Saves the model and the used training config to the models directory. The filename is based on the run id."""
         if not os.path.exists("./models"):
             os.makedirs("./models")
         self.model.cpu()
         pickle.dump((self.model.state_dict(), self.config), open("./models/" + self.run_id + ".nn", "wb"))
         print("Model saved to " + "./models/" + self.run_id + ".nn")
 
-    def close(self) -> None:
-        """Terminates the trainer and all related processes."""
+        # Close    
         try:
             self.dummy_env.close()
         except:
