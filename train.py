@@ -132,13 +132,12 @@ if __name__ == "__main__":
 
     # Init buffer fields
     print("Step 2: Init buffer")
-    rewards = np.zeros((args.num_envs, args.num_steps), dtype=np.float32)
+    rewards = torch.zeros((args.num_envs, args.num_steps))
     actions = torch.zeros((args.num_envs, args.num_steps, len(action_space_shape)), dtype=torch.long)
     dones = np.zeros((args.num_envs, args.num_steps), dtype=np.bool)
     obs = torch.zeros((args.num_envs, args.num_steps) + observation_space.shape)
     log_probs = torch.zeros((args.num_envs, args.num_steps, len(action_space_shape)))
     values = torch.zeros((args.num_envs, args.num_steps))
-    advantages = torch.zeros((args.num_envs, args.num_steps))
     # Episodic memory index buffer
     # Whole episode memories
     # The length of memories is equal to the number of sampled episodes during training data sampling
@@ -272,27 +271,25 @@ if __name__ == "__main__":
                 # Store latest observations
                 next_obs[w] = o
                             
-        # Compute the last value of the current observation and memory window to compute GAE
-        start = torch.clip(worker_current_episode_step - args.trxl_memory_length, 0)
-        end = torch.clip(worker_current_episode_step, args.trxl_memory_length)
-        indices = torch.stack([torch.arange(start[b],end[b]) for b in range(args.num_envs)]).long()
-        memory_window = batched_index_select(next_memory, 1, indices) # Retrieve the memory window from the entire episode
-        _, last_value, _ = agent(torch.tensor(next_obs),
-                                        memory_window, memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)],
-                                        stored_memory_indices[:,-1])
-
-        # Compute advantages
+        # Bootstrap value if not done
         with torch.no_grad():
-            last_advantage = 0
+            start = torch.clip(worker_current_episode_step - args.trxl_memory_length, 0)
+            end = torch.clip(worker_current_episode_step, args.trxl_memory_length)
+            indices = torch.stack([torch.arange(start[b],end[b]) for b in range(args.num_envs)]).long()
+            memory_window = batched_index_select(next_memory, 1, indices) # Retrieve the memory window from the entire episode
+            _, next_value, _ = agent(torch.tensor(next_obs),
+                                            memory_window, memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)],
+                                            stored_memory_indices[:,-1])
+            advantages = torch.zeros_like(rewards).to(device)
+            lastgaelam = 0
             mask = torch.tensor(dones).logical_not() # mask values on terminal states
-            rewards = torch.tensor(rewards)
             for t in reversed(range(args.num_steps)):
-                last_value = last_value * mask[:, t]
-                last_advantage = last_advantage * mask[:, t]
-                delta = rewards[:, t] + args.gamma * last_value - values[:, t]
-                last_advantage = delta + args.gamma * args.gae_lambda * last_advantage
-                advantages[:, t] = last_advantage
-                last_value = values[:, t]
+                next_value = next_value * mask[:, t]
+                lastgaelam = lastgaelam * mask[:, t]
+                delta = rewards[:, t] + args.gamma * next_value - values[:, t]
+                lastgaelam = delta + args.gamma * args.gae_lambda * lastgaelam
+                advantages[:, t] = lastgaelam
+                next_value = values[:, t]
 
         # Flatten the batch
         b_obs = obs.reshape(-1, *obs.shape[2:])
