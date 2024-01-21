@@ -153,9 +153,9 @@ if __name__ == "__main__":
 
     # Init model
     print("Step 3: Init model and optimizer")
-    model = Agent(args, observation_space, action_space_shape, max_episode_steps).to(device)
-    model.train()
-    optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
+    agent = Agent(args, observation_space, action_space_shape, max_episode_steps).to(device)
+    agent.train()
+    optimizer = optim.AdamW(agent.parameters(), lr=args.learning_rate)
 
     # Init workers
     print("Step 4: Init environment workers")
@@ -222,7 +222,7 @@ if __name__ == "__main__":
                 # Retrieve the memory window from the entire episodic memory
                 memory_window = batched_index_select(next_memory, 1, stored_memory_indices[:,step])
                 # Forward the model to retrieve the policy, the states' value and the new memory item
-                policy, value, memory = model(torch.tensor(next_obs), memory_window, stored_memory_masks[:, step],
+                policy, value, memory = agent(torch.tensor(next_obs), memory_window, stored_memory_masks[:, step],
                                                 stored_memory_indices[:,step])
                 
                 # Add new memory item to the episodic memory
@@ -277,7 +277,7 @@ if __name__ == "__main__":
         end = torch.clip(worker_current_episode_step, args.trxl_memory_length)
         indices = torch.stack([torch.arange(start[b],end[b]) for b in range(args.num_envs)]).long()
         memory_window = batched_index_select(next_memory, 1, indices) # Retrieve the memory window from the entire episode
-        _, last_value, _ = model(torch.tensor(next_obs),
+        _, last_value, _ = agent(torch.tensor(next_obs),
                                         memory_window, memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)],
                                         stored_memory_indices[:,-1])
 
@@ -294,7 +294,7 @@ if __name__ == "__main__":
                 advantages[:, t] = last_advantage
                 last_value = values[:, t]
 
-        # Prepare the sampled data inside the buffer (splits data into sequences)
+        # Flatten the batch
         b_obs = obs.reshape(-1, *obs.shape[2:])
         b_logprobs = log_probs.reshape(-1, *log_probs.shape[2:])
         b_actions = actions.reshape(-1, *actions.shape[2:])
@@ -305,7 +305,7 @@ if __name__ == "__main__":
         b_memory_mask = stored_memory_masks.reshape(-1, *stored_memory_masks.shape[2:])
         stored_memories = torch.stack(stored_memories, dim=0)
 
-        # Train epochs
+        # Optimizing the policy and value network
         train_info = []
         for epoch in range(args.update_epochs):
             b_inds = torch.randperm(args.batch_size)
@@ -313,58 +313,54 @@ if __name__ == "__main__":
                 end = start + args.minibatch_size
                 mb_inds = b_inds[start: end]
                 mb_memories = stored_memories[b_memory_index[mb_inds]]
-
-                # Select episodic memory windows
-                memory = batched_index_select(mb_memories, 1, b_memory_indices[mb_inds])
-                # Forward model
-                policy, value, _ = model(b_obs[mb_inds], memory, b_memory_mask[mb_inds], b_memory_indices[mb_inds])
+                mb_memory_windows = batched_index_select(mb_memories, 1, b_memory_indices[mb_inds])
+                policy, newvalue, _ = agent(b_obs[mb_inds], mb_memory_windows, b_memory_mask[mb_inds], b_memory_indices[mb_inds])
 
                 # Retrieve and process log_probs from each policy branch
-                logprobs, entropies = [], []
+                newlogprob, entropies = [], []
                 for i, policy_branch in enumerate(policy):
-                    logprobs.append(policy_branch.log_prob(b_actions[mb_inds][:, i]))
+                    newlogprob.append(policy_branch.log_prob(b_actions[mb_inds][:, i]))
                     entropies.append(policy_branch.entropy())
-                logprobs = torch.stack(logprobs, dim=1)
+                newlogprob = torch.stack(newlogprob, dim=1)
                 entropies = torch.stack(entropies, dim=1).sum(1).reshape(-1)
 
-                # Compute policy surrogates to establish the policy loss
-                normalized_advantage = (b_advantages[mb_inds] - b_advantages[mb_inds].mean()) / (b_advantages[mb_inds].std() + 1e-8)
-                normalized_advantage = normalized_advantage.unsqueeze(1).repeat(1, len(action_space_shape)) # Repeat is necessary for multi-discrete action spaces
-                log_ratio = logprobs - b_logprobs[mb_inds]
-                ratio = torch.exp(log_ratio)
-                surr1 = ratio * normalized_advantage
-                surr2 = torch.clamp(ratio, 1.0 - args.clip_coef, 1.0 + args.clip_coef) * normalized_advantage
-                policy_loss = torch.min(surr1, surr2)
-                policy_loss = policy_loss.mean()
+                # Policy loss
+                mb_advantages = b_advantages[mb_inds]
+                if args.norm_adv:
+                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+                mb_advantages = mb_advantages.unsqueeze(1).repeat(1, len(action_space_shape)) # Repeat is necessary for multi-discrete action spaces
+                logratio = newlogprob - b_logprobs[mb_inds]
+                ratio = torch.exp(logratio)
+                pgloss1 = -mb_advantages * ratio
+                pgloss2 = -mb_advantages * torch.clamp(ratio, 1.0 - args.clip_coef, 1.0 + args.clip_coef)
+                pg_loss = torch.max(pgloss1, pgloss2).mean()
 
-                # Value  function loss
-                sampled_return = b_values[mb_inds] + b_advantages[mb_inds]
-                clipped_value = b_values[mb_inds] + (value - b_values[mb_inds]).clamp(min=-args.clip_coef, max=args.clip_coef)
-                vf_loss = torch.max((value - sampled_return) ** 2, (clipped_value - sampled_return) ** 2)
-                vf_loss = vf_loss.mean()
+                # Value loss
+                mb_returns = b_values[mb_inds] + b_advantages[mb_inds]
+                v_loss_unclipped = (newvalue - mb_returns) ** 2
+                if args.clip_vloss:
+                    v_loss_clipped = b_values[mb_inds] + (newvalue - b_values[mb_inds]).clamp(min=-args.clip_coef, max=args.clip_coef)
+                    v_loss = torch.max(v_loss_unclipped, (v_loss_clipped - mb_returns) ** 2).mean()
+                else:
+                    v_loss = v_loss_unclipped.mean()
 
-                # Entropy Bonus
-                entropy_bonus = entropies.mean()
+                entropy_loss = entropies.mean()
+                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
 
-                # Complete loss
-                loss = -(policy_loss - args.vf_coef * vf_loss + args.ent_coef * entropy_bonus)
-
-                # Compute gradients
-                for pg in optimizer.param_groups:
-                    pg["lr"] = args.learning_rate
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(agent.parameters(), max_norm=args.max_grad_norm)
                 optimizer.step()
 
-                # Monitor additional training stats
-                approx_kl = (ratio - 1.0) - log_ratio # http://joschu.net/blog/kl-approx.html
-                clip_fraction = (abs((ratio - 1.0)) > args.clip_coef).float().mean()
+                with torch.no_grad():
+                    old_approx_kl = (-logratio).mean()
+                    approx_kl = ((ratio - 1.0)) - logratio # http://joschu.net/blog/kl-approx.html
+                    clip_fraction = (abs((ratio - 1.0)) > args.clip_coef).float().mean()
 
-                train_info.append([policy_loss.cpu().data.numpy(),
-                        vf_loss.cpu().data.numpy(),
+                train_info.append([pg_loss.cpu().data.numpy(),
+                        v_loss.cpu().data.numpy(),
                         loss.cpu().data.numpy(),
-                        entropy_bonus.cpu().data.numpy(),
+                        entropy_loss.cpu().data.numpy(),
                         approx_kl.mean().cpu().data.numpy(),
                         clip_fraction.cpu().data.numpy()])
 
@@ -396,14 +392,14 @@ if __name__ == "__main__":
         writer.add_scalar("losses/entropy", training_stats[3], iteration)
         writer.add_scalar("training/value_mean", torch.mean(values), iteration)
         writer.add_scalar("training/advantage_mean", torch.mean(advantages), iteration)
-        writer.add_scalar("other/clip_fraction", training_stats[4], iteration)
-        writer.add_scalar("other/kl", training_stats[5], iteration)
+        writer.add_scalar("other/clip_fraction", training_stats[5], iteration)
+        writer.add_scalar("other/kl", training_stats[4], iteration)
 
     # Save the trained model at the end of the training
     if not os.path.exists("./models"):
         os.makedirs("./models")
-    model.cpu()
-    pickle.dump((model.state_dict(), args), open("./models/" +"x.nn", "wb"))
+    agent.cpu()
+    pickle.dump((agent.state_dict(), args), open("./models/" +"x.nn", "wb"))
     print("Model saved to " + "./models/" + "x.nn")
 
     # Close    
