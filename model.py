@@ -44,23 +44,27 @@ class Agent(nn.Module):
             for num_actions in action_space_shape
         ])
         self.critic = layer_init(nn.Linear(args.trxl_dim, 1), 1)
-
-    def forward(self, obs, memory, memory_mask, memory_indices):
-        h = obs
+    
+    def get_value(self, x, memory, memory_mask, memory_indices):
         if len(self.observation_space_shape) > 1:
-            h = self.cnn(h)
+            x = self.cnn(x)
+        x = F.relu(self.lin_hidden(x))
+        x, _ = self.transformer(x, memory, memory_mask, memory_indices)
+        return self.critic(x).flatten()
 
-        # Feed hidden layer
-        h = F.relu(self.lin_hidden(h))
-        
-        # Forward transformer blocks
-        h, memory = self.transformer(h, memory, memory_mask, memory_indices)
-
-        value = self.critic(h).reshape(-1)
-        # Head: Policy
-        pi = [Categorical(logits=branch(h)) for branch in self.actor_branches]
-        
-        return pi, value, memory    
+    def get_action_and_value(self, x, memory, memory_mask, memory_indices, action=None):
+        if len(self.observation_space_shape) > 1:
+            x = self.cnn(x)
+        x = F.relu(self.lin_hidden(x))
+        x, memory = self.transformer(x, memory, memory_mask, memory_indices)
+        probs = [Categorical(logits=branch(x)) for branch in self.actor_branches]
+        if action is None:
+            action = torch.stack([dist.sample() for dist in probs], dim=1)
+        log_probs = []
+        for i, dist in enumerate(probs):
+            log_probs.append(dist.log_prob(action[:, i]))
+        entropies = torch.stack([dist.entropy() for dist in probs], dim=1)
+        return action, torch.stack(log_probs, dim=1), entropies, self.critic(x).flatten(), memory
 
 class MultiHeadAttention(nn.Module):
     """Multi Head Attention without dropout inspired by https://github.com/aladdinpersson/Machine-Learning-Collection

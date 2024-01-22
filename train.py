@@ -1,9 +1,10 @@
 import os
+import random
 import time
-import torch
-import tyro
 from dataclasses import dataclass
 
+import torch
+import tyro
 import numpy as np
 import pickle
 
@@ -71,6 +72,8 @@ class Args:
     """the maximum norm for the gradient clipping"""
     target_kl: float = None
     """the target KL divergence threshold"""
+
+    # Transformer-XL specific arguments
     trxl_num_blocks: int = 3
     """the number of transformer blocks"""
     trxl_num_heads: int = 4
@@ -121,6 +124,15 @@ if __name__ == "__main__":
         os.makedirs("./summaries")
     timestamp = time.strftime("/%Y%m%d-%H%M%S" + "/")
     writer = SummaryWriter("./summaries/" + "x_" + timestamp)
+
+    # TRY NOT TO MODIFY: seeding
+    random.seed(args.seed)
+    random.SystemRandom().seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic = args.torch_deterministic
+    os.environ['PYTHONHASHSEED'] = str(args.seed)
 
     # Init dummy environment to retrieve action space, observation space and max episode length
     print("Step 1: Init dummy environment")
@@ -221,22 +233,14 @@ if __name__ == "__main__":
                 # Retrieve the memory window from the entire episodic memory
                 memory_window = batched_index_select(next_memory, 1, stored_memory_indices[:,step])
                 # Forward the model to retrieve the policy, the states' value and the new memory item
-                policy, value, memory = agent(torch.tensor(next_obs), memory_window, stored_memory_masks[:, step],
-                                                stored_memory_indices[:,step])
+                action, logprob, _, value, new_memory = agent.get_action_and_value(
+                    torch.tensor(next_obs), memory_window, stored_memory_masks[:, step], stored_memory_indices[:, step]
+                )
                 
                 # Add new memory item to the episodic memory
-                next_memory[worker_ids, worker_current_episode_step] = memory
-
-                # Sample actions from each individual policy branch
-                action = []
-                log_prob = []
-                for action_branch in policy:
-                    a = action_branch.sample()
-                    action.append(a)
-                    log_prob.append(action_branch.log_prob(a))
-                # Write actions, log_probs and values to buffer
-                actions[:, step] = torch.stack(action, dim=1)
-                log_probs[:, step] = torch.stack(log_prob, dim=1)
+                next_memory[worker_ids, worker_current_episode_step] = new_memory
+                actions[:, step] = action
+                log_probs[:, step] = logprob
                 values[:, step] = value
 
             # Send actions to the environments
@@ -277,7 +281,7 @@ if __name__ == "__main__":
             end = torch.clip(worker_current_episode_step, args.trxl_memory_length)
             indices = torch.stack([torch.arange(start[b],end[b]) for b in range(args.num_envs)]).long()
             memory_window = batched_index_select(next_memory, 1, indices) # Retrieve the memory window from the entire episode
-            _, next_value, _ = agent(torch.tensor(next_obs),
+            next_value = agent.get_value(torch.tensor(next_obs),
                                             memory_window, memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)],
                                             stored_memory_indices[:,-1])
             advantages = torch.zeros_like(rewards).to(device)
@@ -311,15 +315,10 @@ if __name__ == "__main__":
                 mb_inds = b_inds[start: end]
                 mb_memories = stored_memories[b_memory_index[mb_inds]]
                 mb_memory_windows = batched_index_select(mb_memories, 1, b_memory_indices[mb_inds])
-                policy, newvalue, _ = agent(b_obs[mb_inds], mb_memory_windows, b_memory_mask[mb_inds], b_memory_indices[mb_inds])
 
-                # Retrieve and process log_probs from each policy branch
-                newlogprob, entropies = [], []
-                for i, policy_branch in enumerate(policy):
-                    newlogprob.append(policy_branch.log_prob(b_actions[mb_inds][:, i]))
-                    entropies.append(policy_branch.entropy())
-                newlogprob = torch.stack(newlogprob, dim=1)
-                entropies = torch.stack(entropies, dim=1).sum(1).reshape(-1)
+                _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value(
+                    b_obs[mb_inds], mb_memory_windows, b_memory_mask[mb_inds], b_memory_indices[mb_inds], b_actions[mb_inds]
+                )
 
                 # Policy loss
                 mb_advantages = b_advantages[mb_inds]
@@ -341,7 +340,7 @@ if __name__ == "__main__":
                 else:
                     v_loss = v_loss_unclipped.mean()
 
-                entropy_loss = entropies.mean()
+                entropy_loss = entropy.mean()
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
 
                 optimizer.zero_grad()
