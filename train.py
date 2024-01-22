@@ -572,15 +572,7 @@ if __name__ == "__main__":
         writer.add_scalar("training/advantage_mean", torch.mean(advantages), iteration)
         writer.add_scalar("other/clip_fraction", training_stats[5], iteration)
         writer.add_scalar("other/kl", training_stats[4], iteration)
-
-    # Save the trained model at the end of the training
-    if not os.path.exists("./models"):
-        os.makedirs("./models")
-    agent.cpu()
-    pickle.dump((agent.state_dict(), args), open("./models/" +"x.nn", "wb"))
-    print("Model saved to " + "./models/" + "x.nn")
-
-    # Close    
+ 
     try:
         dummy_env.close()
     except:
