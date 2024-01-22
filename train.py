@@ -326,23 +326,23 @@ if __name__ == "__main__":
 
     # Init buffer fields
     print("Step 2: Init buffer")
-    rewards = torch.zeros((args.num_envs, args.num_steps))
-    actions = torch.zeros((args.num_envs, args.num_steps, len(action_space_shape)), dtype=torch.long)
-    dones = np.zeros((args.num_envs, args.num_steps), dtype=np.bool)
-    obs = torch.zeros((args.num_envs, args.num_steps) + observation_space.shape)
-    log_probs = torch.zeros((args.num_envs, args.num_steps, len(action_space_shape)))
-    values = torch.zeros((args.num_envs, args.num_steps))
+    rewards = torch.zeros((args.num_steps, args.num_envs))
+    actions = torch.zeros((args.num_steps, args.num_envs, len(action_space_shape)), dtype=torch.long)
+    dones = np.zeros((args.num_steps, args.num_envs), dtype=np.bool)
+    obs = torch.zeros((args.num_steps, args.num_envs) + observation_space.shape)
+    log_probs = torch.zeros((args.num_steps, args.num_envs, len(action_space_shape)))
+    values = torch.zeros((args.num_steps, args.num_envs))
     # Episodic memory index buffer
     # Whole episode memories
     # The length of memories is equal to the number of sampled episodes during training data sampling
     # Each element is of shape (max_episode_length, num_blocks, embed_dim)
     stored_memories = []
     # Memory mask used during attention
-    stored_memory_masks = torch.zeros((args.num_envs, args.num_steps, args.trxl_memory_length), dtype=torch.bool)
+    stored_memory_masks = torch.zeros((args.num_steps, args.num_envs, args.trxl_memory_length), dtype=torch.bool)
     # Index to select the correct episode memory from memories
-    stored_memory_index = torch.zeros((args.num_envs, args.num_steps), dtype=torch.long)
+    stored_memory_index = torch.zeros((args.num_steps, args.num_envs), dtype=torch.long)
     # Indices to slice the memory window
-    stored_memory_indices = torch.zeros((args.num_envs, args.num_steps, args.trxl_memory_length), dtype=torch.long)
+    stored_memory_indices = torch.zeros((args.num_steps, args.num_envs, args.trxl_memory_length), dtype=torch.long)
 
     # Init model
     print("Step 3: Init model and optimizer")
@@ -401,37 +401,37 @@ if __name__ == "__main__":
         # Init episodic memory buffer using each workers' current episodic memory
         stored_memories = [next_memory[w] for w in range(args.num_envs)]
         for w in range(args.num_envs):
-            stored_memory_index[w] = w
+            stored_memory_index[:, w] = w
 
         # Sample actions from the model and collect experiences for optimization
         for step in range(args.num_steps):
             # Gradients can be omitted for sampling training data
             with torch.no_grad():
                 # Store the initial observations inside the buffer
-                obs[:, step] = torch.tensor(next_obs)
+                obs[step] = torch.tensor(next_obs)
                 # Store mask and memory indices inside the buffer
-                stored_memory_masks[:, step] = memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)]
-                stored_memory_indices[:, step] = memory_indices[worker_current_episode_step]
+                stored_memory_masks[step] = memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)]
+                stored_memory_indices[step] = memory_indices[worker_current_episode_step]
                 # Retrieve the memory window from the entire episodic memory
-                memory_window = batched_index_select(next_memory, 1, stored_memory_indices[:,step])
+                memory_window = batched_index_select(next_memory, 1, stored_memory_indices[step])
                 # Forward the model to retrieve the policy, the states' value and the new memory item
                 action, logprob, _, value, new_memory = agent.get_action_and_value(
-                    torch.tensor(next_obs), memory_window, stored_memory_masks[:, step], stored_memory_indices[:, step]
+                    torch.tensor(next_obs), memory_window, stored_memory_masks[step], stored_memory_indices[step]
                 )
                 
                 # Add new memory item to the episodic memory
                 next_memory[worker_ids, worker_current_episode_step] = new_memory
-                actions[:, step] = action
-                log_probs[:, step] = logprob
-                values[:, step] = value
+                actions[step] = action
+                log_probs[step] = logprob
+                values[step] = value
 
             # Send actions to the environments
             for w, worker in enumerate(workers):
-                worker.child.send(("step", actions[w, step].cpu().numpy()))
+                worker.child.send(("step", actions[step, w].cpu().numpy()))
 
             # Retrieve step results from the environments
             for w, worker in enumerate(workers):
-                o, rewards[w, step], dones[w, step], info = worker.child.recv()
+                o, rewards[step, w], dones[step, w], info = worker.child.recv()
                 if info: # i.e. done
                     # Reset the worker's current timestep
                     worker_current_episode_step[w] = 0
@@ -442,7 +442,7 @@ if __name__ == "__main__":
                     # Get data from reset
                     o = worker.child.recv()
                     # Break the reference to the worker's memory
-                    mem_index = stored_memory_index[w, step]
+                    mem_index = stored_memory_index[step, w]
                     stored_memories[mem_index] = stored_memories[mem_index].clone()
                     # Reset episodic memory
                     next_memory[w] = torch.zeros((max_episode_steps, args.trxl_num_blocks, args.trxl_dim), dtype=torch.float32)
@@ -450,7 +450,7 @@ if __name__ == "__main__":
                         # Store memory inside the buffer
                         stored_memories.append(next_memory[w])
                         # Store the reference of to the current episodic memory inside the buffer
-                        stored_memory_index[w, step + 1:] = len(stored_memories) - 1
+                        stored_memory_index[step + 1:, w] = len(stored_memories) - 1
                 else:
                     # Increment worker timestep
                     worker_current_episode_step[w] +=1
@@ -465,17 +465,17 @@ if __name__ == "__main__":
             memory_window = batched_index_select(next_memory, 1, indices) # Retrieve the memory window from the entire episode
             next_value = agent.get_value(torch.tensor(next_obs),
                                             memory_window, memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)],
-                                            stored_memory_indices[:,-1])
+                                            stored_memory_indices[-1])
             advantages = torch.zeros_like(rewards).to(device)
             lastgaelam = 0
             mask = torch.tensor(dones).logical_not() # mask values on terminal states
             for t in reversed(range(args.num_steps)):
-                next_value = next_value * mask[:, t]
-                lastgaelam = lastgaelam * mask[:, t]
-                delta = rewards[:, t] + args.gamma * next_value - values[:, t]
+                next_value = next_value * mask[t]
+                lastgaelam = lastgaelam * mask[t]
+                delta = rewards[t] + args.gamma * next_value - values[t]
                 lastgaelam = delta + args.gamma * args.gae_lambda * lastgaelam
-                advantages[:, t] = lastgaelam
-                next_value = values[:, t]
+                advantages[t] = lastgaelam
+                next_value = values[t]
 
         # Flatten the batch
         b_obs = obs.reshape(-1, *obs.shape[2:])
