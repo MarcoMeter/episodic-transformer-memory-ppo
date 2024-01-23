@@ -87,6 +87,8 @@ class Args:
     """the length of TrXL's sliding memory window"""
     trxl_positional_encoding: str = ""
     """the positional encoding type of the transformer, choices: "", "absolute", "learned" """
+    reconstruction_coef: float = 0.0
+    """the coefficient of the observation reconstruction loss, if set to 0.0 the reconstruction loss is not used"""
 
     # to be filled in runtime
     batch_size: int = 0
@@ -247,10 +249,10 @@ class Agent(nn.Module):
                 layer_init(nn.Conv2d(64, 64, 3, stride=1)),
                 nn.ReLU(),
                 nn.Flatten(),
-                layer_init(nn.Linear(64 * 7 * 7, 384)),
+                layer_init(nn.Linear(64 * 7 * 7, args.trxl_dim)),
                 nn.ReLU(),
             )
-            in_features_next_layer = 384
+            in_features_next_layer = args.trxl_dim
         else:
             in_features_next_layer = observation_space.shape[0]
 
@@ -263,6 +265,19 @@ class Agent(nn.Module):
             for num_actions in action_space_shape
         ])
         self.critic = layer_init(nn.Linear(args.trxl_dim, 1), 1)
+
+        if args.reconstruction_coef > 0.0:
+            self.transposed_cnn = nn.Sequential(
+                layer_init(nn.Linear(args.trxl_dim, 64 * 7 * 7)),
+                nn.ReLU(),
+                nn.Unflatten(1, (64, 7, 7)),
+                layer_init(nn.ConvTranspose2d(64, 64, 3, stride=1)),
+                nn.ReLU(),
+                layer_init(nn.ConvTranspose2d(64, 32, 4, stride=2)),
+                nn.ReLU(),
+                layer_init(nn.ConvTranspose2d(32, 3, 8, stride=4)),
+                nn.Sigmoid(),
+            )
     
     def get_value(self, x, memory, memory_mask, memory_indices):
         if len(self.observation_space_shape) > 1:
@@ -276,6 +291,7 @@ class Agent(nn.Module):
             x = self.cnn(x)
         x = F.relu(self.lin_hidden(x))
         x, memory = self.transformer(x, memory, memory_mask, memory_indices)
+        self.x = x
         probs = [Categorical(logits=branch(x)) for branch in self.actor_branches]
         if action is None:
             action = torch.stack([dist.sample() for dist in probs], dim=1)
@@ -284,6 +300,10 @@ class Agent(nn.Module):
             log_probs.append(dist.log_prob(action[:, i]))
         entropies = torch.stack([dist.entropy() for dist in probs], dim=1)
         return action, torch.stack(log_probs, dim=1), entropies, self.critic(x).flatten(), memory
+    
+    def reconstruct_observation(self):
+        x = self.transposed_cnn(self.x)
+        return x
 
 if __name__ == "__main__":
     args = tyro.cli(Args)
@@ -349,6 +369,7 @@ if __name__ == "__main__":
     agent = Agent(args, observation_space, action_space_shape, max_episode_steps).to(device)
     agent.train()
     optimizer = optim.AdamW(agent.parameters(), lr=args.learning_rate)
+    bce_loss = nn.BCELoss() # Binary cross entropy loss for observation reconstruction
 
     # Init workers
     print("Step 4: Init environment workers")
@@ -527,7 +548,12 @@ if __name__ == "__main__":
                     v_loss = v_loss_unclipped.mean()
 
                 entropy_loss = entropy.mean()
+
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
+
+                if args.reconstruction_coef > 0.0:
+                    r_loss = bce_loss(agent.reconstruct_observation(), b_obs[mb_inds])
+                    loss += args.reconstruction_coef * r_loss
 
                 optimizer.zero_grad()
                 loss.backward()

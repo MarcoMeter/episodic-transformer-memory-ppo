@@ -18,6 +18,7 @@ python train.py ^
   --trxl_dim 384 ^
   --trxl_memory_length 64 ^
   --trxl_positional_encoding none ^
+  --reconstruction_coef 0.1 ^
   --vf_coef 0.5 ^
   --max_grad_norm 0.5 ^
   --learning_rate 3.5e-4 ^
