@@ -328,7 +328,7 @@ if __name__ == "__main__":
     print("Step 2: Init buffer")
     rewards = torch.zeros((args.num_steps, args.num_envs))
     actions = torch.zeros((args.num_steps, args.num_envs, len(action_space_shape)), dtype=torch.long)
-    dones = np.zeros((args.num_steps, args.num_envs), dtype=np.bool)
+    dones = torch.zeros((args.num_steps, args.num_envs))
     obs = torch.zeros((args.num_steps, args.num_envs) + observation_space.shape)
     log_probs = torch.zeros((args.num_steps, args.num_envs, len(action_space_shape)))
     values = torch.zeros((args.num_steps, args.num_envs))
@@ -361,6 +361,7 @@ if __name__ == "__main__":
         worker.child.send(("reset", None))
     # Grab initial observations and store them in their respective placeholder location
     next_obs = np.zeros((args.num_envs,) + observation_space.shape, dtype=np.float32)
+    next_done = torch.zeros(args.num_envs)
     for w, worker in enumerate(workers):
         next_obs[w] = worker.child.recv()
 
@@ -409,6 +410,7 @@ if __name__ == "__main__":
             with torch.no_grad():
                 # Store the initial observations inside the buffer
                 obs[step] = torch.tensor(next_obs)
+                dones[step] = next_done
                 # Store mask and memory indices inside the buffer
                 stored_memory_masks[step] = memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)]
                 stored_memory_indices[step] = memory_indices[worker_current_episode_step]
@@ -431,7 +433,7 @@ if __name__ == "__main__":
 
             # Retrieve step results from the environments
             for w, worker in enumerate(workers):
-                o, rewards[step, w], dones[step, w], info = worker.child.recv()
+                o, rewards[step, w], next_done[w], info = worker.child.recv()
                 if info: # i.e. done
                     # Reset the worker's current timestep
                     worker_current_episode_step[w] = 0
@@ -468,14 +470,16 @@ if __name__ == "__main__":
                                             stored_memory_indices[-1])
             advantages = torch.zeros_like(rewards).to(device)
             lastgaelam = 0
-            mask = torch.tensor(dones).logical_not() # mask values on terminal states
             for t in reversed(range(args.num_steps)):
-                next_value = next_value * mask[t]
-                lastgaelam = lastgaelam * mask[t]
-                delta = rewards[t] + args.gamma * next_value - values[t]
-                lastgaelam = delta + args.gamma * args.gae_lambda * lastgaelam
-                advantages[t] = lastgaelam
-                next_value = values[t]
+                if t == args.num_steps - 1:
+                    nextnonterminal = 1.0 - next_done
+                    nextvalues = next_value
+                else:
+                    nextnonterminal = 1.0 - dones[t + 1]
+                    nextvalues = values[t + 1]
+                delta = rewards[t] + args.gamma * nextvalues * nextnonterminal - values[t]
+                advantages[t] = lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
+            returns = advantages + values
 
         # Flatten the batch
         b_obs = obs.reshape(-1, *obs.shape[2:])
