@@ -474,7 +474,7 @@ if __name__ == "__main__":
                     mem_index = stored_memory_index[step, id]
                     stored_memories[mem_index] = stored_memories[mem_index].clone()
                     # Reset episodic memory
-                    next_memory[w] = torch.zeros((max_episode_steps, args.trxl_num_blocks, args.trxl_dim), dtype=torch.float32)
+                    next_memory[id] = torch.zeros((max_episode_steps, args.trxl_num_blocks, args.trxl_dim), dtype=torch.float32)
                     if step < args.num_steps - 1:
                         # Store memory inside the buffer
                         stored_memories.append(next_memory[id])
@@ -484,13 +484,13 @@ if __name__ == "__main__":
                     # Increment worker timestep
                     env_current_episode_step[id] +=1
 
-                if "final_info" in infos:
-                    for info in infos["final_info"]:
-                        if info and "episode" in info:
-                            sampled_episode_info.append(info["episode"])
-                            # print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                            # writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                            # writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+            if "final_info" in infos:
+                for info in infos["final_info"]:
+                    if info and "episode" in info:
+                        sampled_episode_info.append(info["episode"])
+                        # print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                        # writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                        # writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                             
         # Bootstrap value if not done
         with torch.no_grad():
