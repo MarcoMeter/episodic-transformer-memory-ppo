@@ -52,6 +52,7 @@ class PoMEnv(gym.Env):
         self.possible_positions = list(map(lambda x: round(x, 2), self.possible_positions)) # fix floating point errors
 
     def step(self, action):
+        action = action[0]
         reward = 0.0
         done = False
 

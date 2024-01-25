@@ -14,10 +14,9 @@ import tyro
 
 from einops import rearrange
 from collections import deque
+from minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper
+from pom_env import PoMEnv
 from torch.utils.tensorboard import SummaryWriter
-
-from utils import create_env, process_episode_info
-from worker import Worker
 
 @dataclass
 class Args:
@@ -39,9 +38,7 @@ class Args:
     """whether to capture videos of the agent performances (check out `videos` folder)"""
 
     # Algorithm specific arguments
-    env_type: str = "PocMemoryEnv"
-    """test"""
-    env_id: str = "MysteryPath-Grid-v0" # CartPoleMasked CartPoleMasked MiniGrid-MemoryS9-v0 MysteryPath-Grid-v0 MortarMayhem-Grid-v0
+    env_id: str = "MiniGrid-MemoryS9-v0" # CartPoleMasked CartPoleMasked MiniGrid-MemoryS9-v0 MysteryPath-Grid-v0 MortarMayhem-Grid-v0 ProofofMemory-v0
     """the id of the environment"""
     total_timesteps: int = 10000000
     """total timesteps of the experiments"""
@@ -97,6 +94,28 @@ class Args:
     """the mini-batch size (computed in runtime)"""
     num_iterations: int = 0
     """the number of iterations (computed in runtime)"""
+
+def make_env(env_id, idx, capture_video, run_name):
+    def thunk():
+        if capture_video and idx == 0:
+            env = gym.make(env_id, render_mode="rgb_array")
+            env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+        else:
+            env = gym.make(env_id)
+        if capture_video:
+            if idx == 0:
+                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+
+        if "MiniGrid" in env_id:
+            env = ImgObsWrapper(RGBImgPartialObsWrapper(env, tile_size=12))
+
+        if len(env.observation_space.shape) > 1:
+            env = gym.wrappers.GrayScaleObservation(env)
+            env = gym.wrappers.FrameStack(env, 1)
+        env = gym.wrappers.TimeLimit(env, 96)
+        return gym.wrappers.RecordEpisodeStatistics(env)
+
+    return thunk
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
@@ -242,7 +261,7 @@ class Agent(nn.Module):
 
         if len(self.observation_space_shape) > 1:
             self.cnn = nn.Sequential(
-                layer_init(nn.Conv2d(3, 32, 8, stride=4)),
+                layer_init(nn.Conv2d(1, 32, 8, stride=4)),
                 nn.ReLU(),
                 layer_init(nn.Conv2d(32, 64, 4, stride=2)),
                 nn.ReLU(),
@@ -275,20 +294,20 @@ class Agent(nn.Module):
                 nn.ReLU(),
                 layer_init(nn.ConvTranspose2d(64, 32, 4, stride=2)),
                 nn.ReLU(),
-                layer_init(nn.ConvTranspose2d(32, 3, 8, stride=4)),
+                layer_init(nn.ConvTranspose2d(32, 1, 8, stride=4)),
                 nn.Sigmoid(),
             )
     
     def get_value(self, x, memory, memory_mask, memory_indices):
         if len(self.observation_space_shape) > 1:
-            x = self.cnn(x)
+            x = self.cnn(x / 255.0)
         x = F.relu(self.lin_hidden(x))
         x, _ = self.transformer(x, memory, memory_mask, memory_indices)
         return self.critic(x).flatten()
 
     def get_action_and_value(self, x, memory, memory_mask, memory_indices, action=None):
         if len(self.observation_space_shape) > 1:
-            x = self.cnn(x)
+            x = self.cnn(x / 255.0)
         x = F.relu(self.lin_hidden(x))
         x, memory = self.transformer(x, memory, memory_mask, memory_indices)
         self.x = x
@@ -336,15 +355,14 @@ if __name__ == "__main__":
     torch.backends.cudnn.deterministic = args.torch_deterministic
     os.environ['PYTHONHASHSEED'] = str(args.seed)
 
-    # Init dummy environment to retrieve action space, observation space and max episode length
-    print("Step 1: Init dummy environment")
-    dummy_env = create_env(args)
-    observation_space = dummy_env.observation_space
-    action_space_shape = (dummy_env.action_space.n,)
-    max_episode_steps = dummy_env.max_episode_steps
-    dummy_env.close()
+    print("Step 1: Init environments")
+    envs = gym.vector.SyncVectorEnv(
+        [make_env(args.env_id, i, args.capture_video, run_name) for i in range(args.num_envs)],
+    )
+    observation_space = envs.single_observation_space
+    action_space_shape = (envs.single_action_space.n,) if isinstance(envs.single_action_space, gym.spaces.Discrete) else tuple(envs.single_action_space.nvec)
+    max_episode_steps = 96
 
-    # Init buffer fields
     print("Step 2: Init buffer")
     rewards = torch.zeros((args.num_steps, args.num_envs))
     actions = torch.zeros((args.num_steps, args.num_envs, len(action_space_shape)), dtype=torch.long)
@@ -352,19 +370,16 @@ if __name__ == "__main__":
     obs = torch.zeros((args.num_steps, args.num_envs) + observation_space.shape)
     log_probs = torch.zeros((args.num_steps, args.num_envs, len(action_space_shape)))
     values = torch.zeros((args.num_steps, args.num_envs))
-    # Episodic memory index buffer
-    # Whole episode memories
-    # The length of memories is equal to the number of sampled episodes during training data sampling
-    # Each element is of shape (max_episode_length, num_blocks, embed_dim)
+    # The length of stored-memories is equal to the number of sampled episodes during training data sampling 
+    # (num_episodes, max_episode_length, num_blocks, embed_dim)
     stored_memories = []
     # Memory mask used during attention
     stored_memory_masks = torch.zeros((args.num_steps, args.num_envs, args.trxl_memory_length), dtype=torch.bool)
-    # Index to select the correct episode memory from memories
+    # Index to select the correct episode memory from stored_memories
     stored_memory_index = torch.zeros((args.num_steps, args.num_envs), dtype=torch.long)
-    # Indices to slice the memory window
+    # Indices to slice the episode memories into windows
     stored_memory_indices = torch.zeros((args.num_steps, args.num_envs, args.trxl_memory_length), dtype=torch.long)
 
-    # Init model
     print("Step 3: Init model and optimizer")
     agent = Agent(args, observation_space, action_space_shape, max_episode_steps).to(device)
     agent.train()
@@ -373,18 +388,15 @@ if __name__ == "__main__":
 
     # Init workers
     print("Step 4: Init environment workers")
-    workers = [Worker(args) for w in range(args.num_envs)]
-    worker_ids = range(args.num_envs)
-    worker_current_episode_step = torch.zeros((args.num_envs, ), dtype=torch.long)
+    env_ids = range(args.num_envs)
+    env_current_episode_step = torch.zeros((args.num_envs, ), dtype=torch.long)
     # Reset workers (i.e. environments)
     print("Step 5: Reset workers")
-    for worker in workers:
-        worker.child.send(("reset", None))
     # Grab initial observations and store them in their respective placeholder location
-    next_obs = np.zeros((args.num_envs,) + observation_space.shape, dtype=np.float32)
+    global_step = 0
+    next_obs, _ = envs.reset()
+    next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs)
-    for w, worker in enumerate(workers):
-        next_obs[w] = worker.child.recv()
 
     # Setup placeholders for each worker's current episodic memory
     next_memory = torch.zeros((args.num_envs, max_episode_steps, args.trxl_num_blocks, args.trxl_dim), dtype=torch.float32)
@@ -427,14 +439,15 @@ if __name__ == "__main__":
 
         # Sample actions from the model and collect experiences for optimization
         for step in range(args.num_steps):
+            global_step += args.num_envs
             # Gradients can be omitted for sampling training data
             with torch.no_grad():
                 # Store the initial observations inside the buffer
-                obs[step] = torch.tensor(next_obs)
+                obs[step] = next_obs
                 dones[step] = next_done
                 # Store mask and memory indices inside the buffer
-                stored_memory_masks[step] = memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)]
-                stored_memory_indices[step] = memory_indices[worker_current_episode_step]
+                stored_memory_masks[step] = memory_mask[torch.clip(env_current_episode_step, 0, args.trxl_memory_length - 1)]
+                stored_memory_indices[step] = memory_indices[env_current_episode_step]
                 # Retrieve the memory window from the entire episodic memory
                 memory_window = batched_index_select(next_memory, 1, stored_memory_indices[step])
                 # Forward the model to retrieve the policy, the states' value and the new memory item
@@ -443,51 +456,51 @@ if __name__ == "__main__":
                 )
                 
                 # Add new memory item to the episodic memory
-                next_memory[worker_ids, worker_current_episode_step] = new_memory
+                next_memory[env_ids, env_current_episode_step] = new_memory
                 actions[step] = action
                 log_probs[step] = logprob
                 values[step] = value
 
-            # Send actions to the environments
-            for w, worker in enumerate(workers):
-                worker.child.send(("step", actions[step, w].cpu().numpy()))
+            # TRY NOT TO MODIFY: execute the game and log data.
+            next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
+            next_done = np.logical_or(terminations, truncations)
+            rewards[step] = torch.tensor(reward).to(device).view(-1)
+            next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
 
-            # Retrieve step results from the environments
-            for w, worker in enumerate(workers):
-                o, rewards[step, w], next_done[w], info = worker.child.recv()
-                if info: # i.e. done
+            for id, done in enumerate(next_done):
+                if done:
                     # Reset the worker's current timestep
-                    worker_current_episode_step[w] = 0
-                    # Store the information of the completed episode (e.g. total reward, episode length)
-                    sampled_episode_info.append(info)
-                    # Reset the agent (potential interface for providing reset parameters)
-                    worker.child.send(("reset", None))
-                    # Get data from reset
-                    o = worker.child.recv()
+                    env_current_episode_step[id] = 0
                     # Break the reference to the worker's memory
-                    mem_index = stored_memory_index[step, w]
+                    mem_index = stored_memory_index[step, id]
                     stored_memories[mem_index] = stored_memories[mem_index].clone()
                     # Reset episodic memory
                     next_memory[w] = torch.zeros((max_episode_steps, args.trxl_num_blocks, args.trxl_dim), dtype=torch.float32)
                     if step < args.num_steps - 1:
                         # Store memory inside the buffer
-                        stored_memories.append(next_memory[w])
+                        stored_memories.append(next_memory[id])
                         # Store the reference of to the current episodic memory inside the buffer
-                        stored_memory_index[step + 1:, w] = len(stored_memories) - 1
+                        stored_memory_index[step + 1:, id] = len(stored_memories) - 1
                 else:
                     # Increment worker timestep
-                    worker_current_episode_step[w] +=1
-                # Store latest observations
-                next_obs[w] = o
+                    env_current_episode_step[id] +=1
+
+                if "final_info" in infos:
+                    for info in infos["final_info"]:
+                        if info and "episode" in info:
+                            sampled_episode_info.append(info["episode"])
+                            # print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                            # writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                            # writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                             
         # Bootstrap value if not done
         with torch.no_grad():
-            start = torch.clip(worker_current_episode_step - args.trxl_memory_length, 0)
-            end = torch.clip(worker_current_episode_step, args.trxl_memory_length)
+            start = torch.clip(env_current_episode_step - args.trxl_memory_length, 0)
+            end = torch.clip(env_current_episode_step, args.trxl_memory_length)
             indices = torch.stack([torch.arange(start[b],end[b]) for b in range(args.num_envs)]).long()
             memory_window = batched_index_select(next_memory, 1, indices) # Retrieve the memory window from the entire episode
-            next_value = agent.get_value(torch.tensor(next_obs),
-                                            memory_window, memory_mask[torch.clip(worker_current_episode_step, 0, args.trxl_memory_length - 1)],
+            next_value = agent.get_value(next_obs,
+                                            memory_window, memory_mask[torch.clip(env_current_episode_step, 0, args.trxl_memory_length - 1)],
                                             stored_memory_indices[-1])
             advantages = torch.zeros_like(rewards).to(device)
             lastgaelam = 0
@@ -552,7 +565,7 @@ if __name__ == "__main__":
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
 
                 if args.reconstruction_coef > 0.0:
-                    r_loss = bce_loss(agent.reconstruct_observation(), b_obs[mb_inds])
+                    r_loss = bce_loss(agent.reconstruct_observation(), b_obs[mb_inds] / 255.0)
                     loss += args.reconstruction_coef * r_loss
 
                 optimizer.zero_grad()
@@ -574,18 +587,17 @@ if __name__ == "__main__":
 
         training_stats = np.mean(train_info, axis=0)
 
-        # Store recent episode infos
+        # Store and process recent episode infos
         episode_infos.extend(sampled_episode_info)
-        episode_result = process_episode_info(episode_infos)
+        episode_result = {}
+        if len(episode_infos) > 0:
+            for key in episode_infos[0].keys():
+                episode_result[key + "_mean"] = np.mean([info[key] for info in episode_infos])
+                episode_result[key + "_std"] = np.std([info[key] for info in episode_infos])
 
         # Print training statistics
-        if "success" in episode_result:
-            result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} success={:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
-                iteration, episode_result["reward_mean"], episode_result["reward_std"], episode_result["length_mean"], episode_result["length_std"], episode_result["success"],
-                training_stats[0], training_stats[1], training_stats[3], training_stats[2], torch.mean(values), torch.mean(advantages))
-        else:
-            result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
-                iteration, episode_result["reward_mean"], episode_result["reward_std"], episode_result["length_mean"], episode_result["length_std"], 
+        result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
+                iteration, episode_result["r_mean"], episode_result["r_std"], episode_result["l_mean"], episode_result["l_std"], 
                 training_stats[0], training_stats[1], training_stats[3], training_stats[2], torch.mean(values), torch.mean(advantages))
         print(result)
 
@@ -603,21 +615,6 @@ if __name__ == "__main__":
         writer.add_scalar("other/clip_fraction", training_stats[5], iteration)
         writer.add_scalar("other/kl", training_stats[4], iteration)
  
-    try:
-        dummy_env.close()
-    except:
-        pass
-
-    try:
-        writer.close()
-    except:
-        pass
-
-    try:
-        for worker in workers:
-            worker.child.send(("close", None))
-    except:
-        pass
-
-    time.sleep(1.0)
+    writer.close()
+    envs.close()
     exit(0)

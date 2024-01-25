@@ -6,7 +6,6 @@ call %conda_path%\Scripts\activate.bat %conda_path%
 call conda activate %environment_name%
 
 python train.py ^
-  --env_type Minigrid ^
   --env_id MiniGrid-MemoryS9-v0 ^
   --total_timesteps 1000000 ^
   --num_envs 16 ^
