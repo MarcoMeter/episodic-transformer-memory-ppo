@@ -386,11 +386,10 @@ if __name__ == "__main__":
     optimizer = optim.AdamW(agent.parameters(), lr=args.learning_rate)
     bce_loss = nn.BCELoss() # Binary cross entropy loss for observation reconstruction
 
-    # Init workers
     print("Step 4: Init environment workers")
     env_ids = range(args.num_envs)
     env_current_episode_step = torch.zeros((args.num_envs, ), dtype=torch.long)
-    # Reset workers (i.e. environments)
+
     print("Step 5: Reset workers")
     # Grab initial observations and store them in their respective placeholder location
     global_step = 0

@@ -6,7 +6,7 @@ call %conda_path%\Scripts\activate.bat %conda_path%
 call conda activate %environment_name%
 
 python train.py ^
-  --env_type PocMemoryEnv ^
+  --env_id ProofofMemory-v0 ^
   --total_timesteps 25000 ^
   --num_envs 16 ^
   --num_steps 128 ^
