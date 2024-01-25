@@ -38,9 +38,9 @@ class Args:
     """whether to capture videos of the agent performances (check out `videos` folder)"""
 
     # Algorithm specific arguments
-    env_id: str = "MiniGrid-MemoryS9-v0" # CartPoleMasked CartPoleMasked MiniGrid-MemoryS9-v0 MysteryPath-Grid-v0 MortarMayhem-Grid-v0 ProofofMemory-v0
+    env_id: str = "ProofofMemory-v0" # MiniGrid-MemoryS9-v0 MysteryPath-Grid-v0 MortarMayhem-Grid-v0 ProofofMemory-v0
     """the id of the environment"""
-    total_timesteps: int = 10000000
+    total_timesteps: int = 25000
     """total timesteps of the experiments"""
     learning_rate: float = 3.0e-4
     """the learning rate of the optimizer"""
@@ -66,7 +66,7 @@ class Args:
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
     ent_coef: float = 0.001
     """coefficient of the entropy"""
-    vf_coef: float = 0.5
+    vf_coef: float = 0.1
     """coefficient of the value function"""
     max_grad_norm: float = 0.5
     """the maximum norm for the gradient clipping"""
@@ -74,13 +74,13 @@ class Args:
     """the target KL divergence threshold"""
 
     # Transformer-XL specific arguments
-    trxl_num_blocks: int = 3
+    trxl_num_blocks: int = 4
     """the number of transformer blocks"""
-    trxl_num_heads: int = 4
+    trxl_num_heads: int = 1
     """the number of heads used in multi-head attention"""
-    trxl_dim: int = 384
+    trxl_dim: int = 64
     """the dimension of the transformer"""
-    trxl_memory_length: int = 32
+    trxl_memory_length: int = 16
     """the length of TrXL's sliding memory window"""
     trxl_positional_encoding: str = ""
     """the positional encoding type of the transformer, choices: "", "absolute", "learned" """
@@ -451,7 +451,7 @@ if __name__ == "__main__":
                 memory_window = batched_index_select(next_memory, 1, stored_memory_indices[step])
                 # Forward the model to retrieve the policy, the states' value and the new memory item
                 action, logprob, _, value, new_memory = agent.get_action_and_value(
-                    torch.tensor(next_obs), memory_window, stored_memory_masks[step], stored_memory_indices[step]
+                    next_obs, memory_window, stored_memory_masks[step], stored_memory_indices[step]
                 )
                 
                 # Add new memory item to the episodic memory
