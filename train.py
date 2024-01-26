@@ -505,6 +505,7 @@ if __name__ == "__main__":
         b_logprobs = log_probs.reshape(-1, *log_probs.shape[2:])
         b_actions = actions.reshape(-1, *actions.shape[2:])
         b_advantages = advantages.reshape(-1)
+        b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
         b_memory_index = stored_memory_index.reshape(-1)
         b_memory_indices = stored_memory_indices.reshape(-1, *stored_memory_indices.shape[2:])
@@ -537,11 +538,10 @@ if __name__ == "__main__":
                 pg_loss = torch.max(pgloss1, pgloss2).mean()
 
                 # Value loss
-                mb_returns = b_values[mb_inds] + b_advantages[mb_inds]
-                v_loss_unclipped = (newvalue - mb_returns) ** 2
+                v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
                 if args.clip_vloss:
                     v_loss_clipped = b_values[mb_inds] + (newvalue - b_values[mb_inds]).clamp(min=-args.clip_coef, max=args.clip_coef)
-                    v_loss = torch.max(v_loss_unclipped, (v_loss_clipped - mb_returns) ** 2).mean()
+                    v_loss = torch.max(v_loss_unclipped, (v_loss_clipped - b_returns[mb_inds]) ** 2).mean()
                 else:
                     v_loss = v_loss_unclipped.mean()
 
@@ -566,11 +566,10 @@ if __name__ == "__main__":
                     approx_kl = ((ratio - 1.0)) - logratio # http://joschu.net/blog/kl-approx.html
                     clip_fraction = (abs((ratio - 1.0)) > args.clip_coef).float().mean()
 
-                train_info.append([pg_loss.cpu().data.numpy(),
-                        v_loss.cpu().data.numpy(),
-                        loss.cpu().data.numpy(),
-                        entropy_loss.cpu().data.numpy(),
-                        approx_kl.mean().cpu().data.numpy(),
+                train_info.append([pg_loss.cpu().data.numpy(), v_loss.cpu().data.numpy(),
+                        loss.cpu().data.numpy(), entropy_loss.cpu().data.numpy(),
+                        r_loss.cpu().data.numpy() if args.reconstruction_coef > 0.0 else 0.0,
+                        old_approx_kl.cpu().data.numpy(), approx_kl.mean().cpu().data.numpy(),
                         clip_fraction.cpu().data.numpy()])
 
             if args.target_kl is not None and approx_kl > args.target_kl:
@@ -578,31 +577,38 @@ if __name__ == "__main__":
 
         training_stats = np.mean(train_info, axis=0)
 
+        y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
+        var_y = np.var(y_true)
+        explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+
         # Log and monitor training statistics
         episode_infos.extend(sampled_episode_infos)
         episode_result = {}
         if len(episode_infos) > 0:
             for key in episode_infos[0].keys():
                 episode_result[key + "_mean"] = np.mean([info[key] for info in episode_infos])
-                episode_result[key + "_std"] = np.std([info[key] for info in episode_infos])
 
-        result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
-                iteration, episode_result["r_mean"], episode_result["r_std"], episode_result["l_mean"], episode_result["l_std"], 
-                training_stats[0], training_stats[1], training_stats[3], training_stats[2], torch.mean(values), torch.mean(advantages))
-        print(result)
+        print("{:9} return={:.2f} length={:.1f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} adv={:.3f}".format(
+                global_step, episode_result["r_mean"], episode_result["l_mean"], training_stats[0], training_stats[1], 
+                training_stats[3], training_stats[2], torch.mean(values), torch.mean(advantages)))
 
         if episode_result:
             for key in episode_result:
-                if "std" not in key:
-                    writer.add_scalar("episode/" + key, episode_result[key], iteration)
-        writer.add_scalar("losses/loss", training_stats[2], iteration)
-        writer.add_scalar("losses/policy_loss", training_stats[0], iteration)
-        writer.add_scalar("losses/value_loss", training_stats[1], iteration)
-        writer.add_scalar("losses/entropy", training_stats[3], iteration)
-        writer.add_scalar("training/value_mean", torch.mean(values), iteration)
-        writer.add_scalar("training/advantage_mean", torch.mean(advantages), iteration)
-        writer.add_scalar("other/clip_fraction", training_stats[5], iteration)
-        writer.add_scalar("other/kl", training_stats[4], iteration)
+                writer.add_scalar("episode/" + key, episode_result[key], global_step)
+        writer.add_scalar("episode/value_mean", torch.mean(values), global_step)
+        writer.add_scalar("episode/advantage_mean", torch.mean(advantages), global_step)
+        writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
+        writer.add_scalar("losses/policy_loss", training_stats[0], global_step)
+        writer.add_scalar("losses/value_loss", training_stats[1], global_step)
+        writer.add_scalar("losses/loss", training_stats[2], global_step)
+        writer.add_scalar("losses/entropy", training_stats[3], global_step)
+        writer.add_scalar("losses/reconstruction_loss", training_stats[4], global_step)
+        writer.add_scalar("losses/old_approx_kl", training_stats[5], global_step)
+        writer.add_scalar("losses/approx_kl", training_stats[6], global_step)
+        writer.add_scalar("losses/clipfrac", training_stats[7], global_step)
+        writer.add_scalar("losses/explained_variance", explained_var, global_step)
+        # print("SPS:", int(global_step / (time.time() - start_time)))
+        writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
  
     writer.close()
     envs.close()
