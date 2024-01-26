@@ -87,7 +87,7 @@ class Args:
     reconstruction_coef: float = 0.0
     """the coefficient of the observation reconstruction loss, if set to 0.0 the reconstruction loss is not used"""
 
-    # to be filled in runtime
+    # To be filled on runtime
     batch_size: int = 0
     """the batch size (computed in runtime)"""
     minibatch_size: int = 0
@@ -146,8 +146,7 @@ class PositionalEncoding(nn.Module):
         return pos_emb
     
 class MultiHeadAttention(nn.Module):
-    """Multi Head Attention without dropout inspired by https://github.com/aladdinpersson/Machine-Learning-Collection
-    https://youtu.be/U0s0f995w14"""
+    """Multi Head Attention without dropout inspired by https://github.com/aladdinpersson/Machine-Learning-Collection"""
     def __init__(self, embed_dim, num_heads):
         super(MultiHeadAttention, self).__init__()
         self.embed_dim = embed_dim
@@ -164,39 +163,31 @@ class MultiHeadAttention(nn.Module):
         self.fc_out = nn.Linear(self.num_heads * self.head_size, embed_dim)
 
     def forward(self, values, keys, query, mask):
-        # Get number of training examples and sequence lengths
         N = query.shape[0]
         value_len, key_len, query_len = values.shape[1], keys.shape[1], query.shape[1]
-
-        # Split the embedding into self.num_heads different pieces
         values = values.reshape(N, value_len, self.num_heads, self.head_size)
         keys = keys.reshape(N, key_len, self.num_heads, self.head_size)
         query = query.reshape(N, query_len, self.num_heads, self.head_size)
-
         values = self.values(values)  # (N, value_len, heads, head_dim)
         keys = self.keys(keys)  # (N, key_len, heads, head_dim)
         queries = self.queries(query)  # (N, query_len, heads, heads_dim)
 
-        # Einsum does matrix mult. for query*keys for each training example
+        # Dot-product
         energy = torch.einsum("nqhd,nkhd->nhqk", [queries, keys])
 
         # Mask padded indices so their attention weights become 0
         if mask is not None:
             energy = energy.masked_fill(mask.unsqueeze(1).unsqueeze(1) == 0, float("-1e20")) # -inf causes NaN
 
-        # Normalize energy values and apply softmax wo retreive the attention scores
-        attention = torch.softmax(energy / (self.embed_dim ** (1 / 2)), dim=3)
-        # attention shape: (N, heads, query_len, key_len)
+        # Normalize energy values and apply softmax to retreive the attention scores
+        attention = torch.softmax(energy / (self.embed_dim ** (1 / 2)), dim=3) # attention shape: (N, heads, query_len, key_len)
 
         # Scale values by attention weights
         out = torch.einsum("nhql,nlhd->nqhd", [attention, values]).reshape(
             N, query_len, self.num_heads * self.head_size
         )
 
-        # Forward projection
-        out = self.fc_out(out)
-
-        return out, attention
+        return self.fc_out(out), attention
     
 class TransformerBlock(nn.Module):
     def __init__(self, dim, num_heads):
@@ -211,17 +202,12 @@ class TransformerBlock(nn.Module):
         # Pre-layer normalization (post-layer normalization is usually less effective)
         query_ = self.layer_norm_q(query)
         value = self.norm_kv(value)
-        key = value
-        # Forward MultiHeadAttention
-        attention, attention_weights = self.attention(value, key, query_, mask)
-        # Skip connection
-        x = attention + query
-        # Pre-layer normalization
-        x_ = self.layer_norm_attn(x)
-        # Forward projection
-        forward = self.fc_projection(x_)
-        # Skip connection
-        out = forward + x
+        key = value                     # K = V -> self-attention
+        attention, attention_weights = self.attention(value, key, query_, mask) # MHA
+        x = attention + query               # Skip connection
+        x_ = self.layer_norm_attn(x)        # Pre-layer normalization
+        forward = self.fc_projection(x_)    # Forward projection
+        out = forward + x                   # Skip connection
         return out, attention_weights
 
 class Transformer(nn.Module):
@@ -256,10 +242,10 @@ class Transformer(nn.Module):
 class Agent(nn.Module):
     def __init__(self, args, observation_space, action_space_shape, max_episode_steps):
         super().__init__()
-        self.observation_space_shape = observation_space.shape
+        self.obs_shape = observation_space.shape
         self.max_episode_steps = max_episode_steps
 
-        if len(self.observation_space_shape) > 1:
+        if len(self.obs_shape) > 1:
             self.cnn = nn.Sequential(
                 layer_init(nn.Conv2d(1, 32, 8, stride=4)),
                 nn.ReLU(),
@@ -299,14 +285,14 @@ class Agent(nn.Module):
             )
     
     def get_value(self, x, memory, memory_mask, memory_indices):
-        if len(self.observation_space_shape) > 1:
+        if len(self.obs_shape) > 1:
             x = self.cnn(x / 255.0)
         x = F.relu(self.lin_hidden(x))
         x, _ = self.transformer(x, memory, memory_mask, memory_indices)
         return self.critic(x).flatten()
 
     def get_action_and_value(self, x, memory, memory_mask, memory_indices, action=None):
-        if len(self.observation_space_shape) > 1:
+        if len(self.obs_shape) > 1:
             x = self.cnn(x / 255.0)
         x = F.relu(self.lin_hidden(x))
         x, memory = self.transformer(x, memory, memory_mask, memory_indices)
@@ -386,18 +372,16 @@ if __name__ == "__main__":
     optimizer = optim.AdamW(agent.parameters(), lr=args.learning_rate)
     bce_loss = nn.BCELoss() # Binary cross entropy loss for observation reconstruction
 
-    print("Step 4: Init environment workers")
-    env_ids = range(args.num_envs)
-    env_current_episode_step = torch.zeros((args.num_envs, ), dtype=torch.long)
-
-    print("Step 5: Reset workers")
+    print("Step 4: Reset environments")
     # Grab initial observations and store them in their respective placeholder location
     global_step = 0
+    env_ids = range(args.num_envs)
+    env_current_episode_step = torch.zeros((args.num_envs, ), dtype=torch.long)
     next_obs, _ = envs.reset()
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs)
 
-    # Setup placeholders for each worker's current episodic memory
+    # Setup placeholders for each environments's current episodic memory
     next_memory = torch.zeros((args.num_envs, max_episode_steps, args.trxl_num_blocks, args.trxl_dim), dtype=torch.float32)
     # Generate episodic memory mask used in attention
     memory_mask = torch.tril(torch.ones((args.trxl_memory_length, args.trxl_memory_length)), diagonal=-1)
@@ -423,38 +407,29 @@ if __name__ == "__main__":
     3, 4, 5, 6
     """
 
-    print("Step 6: Starting training using " + str(device))
-    # Store episode results for monitoring statistics
-    episode_infos = deque(maxlen=100)
+    print("Step 5: Starting training using " + str(device))
+    episode_infos = deque(maxlen=100)   # Store episode results for monitoring statistics
 
     for iteration in range(1, args.num_iterations + 1):
-        # Sample training data
-        sampled_episode_info = []
+        sampled_episode_infos = []
     
         # Init episodic memory buffer using each workers' current episodic memory
-        stored_memories = [next_memory[w] for w in range(args.num_envs)]
-        for w in range(args.num_envs):
-            stored_memory_index[:, w] = w
+        stored_memories = [next_memory[e] for e in range(args.num_envs)]
+        for e in range(args.num_envs):
+            stored_memory_index[:, e] = e
 
-        # Sample actions from the model and collect experiences for optimization
         for step in range(args.num_steps):
             global_step += args.num_envs
-            # Gradients can be omitted for sampling training data
             with torch.no_grad():
-                # Store the initial observations inside the buffer
                 obs[step] = next_obs
                 dones[step] = next_done
-                # Store mask and memory indices inside the buffer
                 stored_memory_masks[step] = memory_mask[torch.clip(env_current_episode_step, 0, args.trxl_memory_length - 1)]
                 stored_memory_indices[step] = memory_indices[env_current_episode_step]
                 # Retrieve the memory window from the entire episodic memory
                 memory_window = batched_index_select(next_memory, 1, stored_memory_indices[step])
-                # Forward the model to retrieve the policy, the states' value and the new memory item
                 action, logprob, _, value, new_memory = agent.get_action_and_value(
                     next_obs, memory_window, stored_memory_masks[step], stored_memory_indices[step]
                 )
-                
-                # Add new memory item to the episodic memory
                 next_memory[env_ids, env_current_episode_step] = new_memory
                 actions[step] = action
                 log_probs[step] = logprob
@@ -466,11 +441,12 @@ if __name__ == "__main__":
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
 
+            # Reset and process episodic memory if done
             for id, done in enumerate(next_done):
                 if done:
-                    # Reset the worker's current timestep
+                    # Reset the environment's current timestep
                     env_current_episode_step[id] = 0
-                    # Break the reference to the worker's memory
+                    # Break the reference to the environment's episodic memory
                     mem_index = stored_memory_index[step, id]
                     stored_memories[mem_index] = stored_memories[mem_index].clone()
                     # Reset episodic memory
@@ -481,16 +457,13 @@ if __name__ == "__main__":
                         # Store the reference of to the current episodic memory inside the buffer
                         stored_memory_index[step + 1:, id] = len(stored_memories) - 1
                 else:
-                    # Increment worker timestep
+                    # Increment environment timestep if not done
                     env_current_episode_step[id] +=1
 
             if "final_info" in infos:
                 for info in infos["final_info"]:
                     if info and "episode" in info:
-                        sampled_episode_info.append(info["episode"])
-                        # print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                        # writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                        # writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                        sampled_episode_infos.append(info["episode"])
                             
         # Bootstrap value if not done
         with torch.no_grad():
@@ -559,10 +532,13 @@ if __name__ == "__main__":
                 else:
                     v_loss = v_loss_unclipped.mean()
 
+                # Entropy loss
                 entropy_loss = entropy.mean()
 
+                # Combined losses
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
 
+                # Add reconstruction loss if used
                 if args.reconstruction_coef > 0.0:
                     r_loss = bce_loss(agent.reconstruct_observation(), b_obs[mb_inds] / 255.0)
                     loss += args.reconstruction_coef * r_loss
@@ -586,21 +562,19 @@ if __name__ == "__main__":
 
         training_stats = np.mean(train_info, axis=0)
 
-        # Store and process recent episode infos
-        episode_infos.extend(sampled_episode_info)
+        # Log and monitor training statistics
+        episode_infos.extend(sampled_episode_infos)
         episode_result = {}
         if len(episode_infos) > 0:
             for key in episode_infos[0].keys():
                 episode_result[key + "_mean"] = np.mean([info[key] for info in episode_infos])
                 episode_result[key + "_std"] = np.std([info[key] for info in episode_infos])
 
-        # Print training statistics
         result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
                 iteration, episode_result["r_mean"], episode_result["r_std"], episode_result["l_mean"], episode_result["l_std"], 
                 training_stats[0], training_stats[1], training_stats[3], training_stats[2], torch.mean(values), torch.mean(advantages))
         print(result)
 
-        # Write training statistics to tensorboard
         if episode_result:
             for key in episode_result:
                 if "std" not in key:
@@ -616,4 +590,3 @@ if __name__ == "__main__":
  
     writer.close()
     envs.close()
-    exit(0)
