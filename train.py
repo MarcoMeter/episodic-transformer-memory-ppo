@@ -338,12 +338,9 @@ if __name__ == "__main__":
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
-    random.SystemRandom().seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    torch.cuda.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
-    os.environ['PYTHONHASHSEED'] = str(args.seed)
 
     # Determine the device to be used for training and set the default tensor type
     if args.cuda:
@@ -389,7 +386,7 @@ if __name__ == "__main__":
     global_step = 0
     start_time = time.time()
     episode_infos = deque(maxlen=100)   # Store episode results for monitoring statistics
-    next_obs, _ = envs.reset()
+    next_obs, _ = envs.reset(seed=args.seed)
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs)
     # Setup placeholders for each environments's current episodic memory
