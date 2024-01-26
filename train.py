@@ -14,7 +14,7 @@ import tyro
 
 from einops import rearrange
 from collections import deque
-from minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper
+from minigrid.wrappers import ImgObsWrapper, RGBImgPartialObsWrapper
 from pom_env import PoMEnv
 from torch.utils.tensorboard import SummaryWriter
 
@@ -107,12 +107,13 @@ def make_env(env_id, idx, capture_video, run_name):
                 env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
 
         if "MiniGrid" in env_id:
-            env = ImgObsWrapper(RGBImgPartialObsWrapper(env, tile_size=12))
+            env = gym.make(env_id, agent_view_size=3, tile_size = 28)
+            env = ImgObsWrapper(RGBImgPartialObsWrapper(env, tile_size = 28))
 
         if len(env.observation_space.shape) > 1:
             env = gym.wrappers.GrayScaleObservation(env)
             env = gym.wrappers.FrameStack(env, 1)
-        env = gym.wrappers.TimeLimit(env, 96)
+        env = gym.wrappers.TimeLimit(env, 96) # TODO: retrieve from Memory Gym envs
         return gym.wrappers.RecordEpisodeStatistics(env)
 
     return thunk
