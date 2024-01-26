@@ -48,7 +48,7 @@ class Args:
     """the number of parallel game environments"""
     num_steps: int = 128
     """the number of steps to run in each environment per policy rollout"""
-    anneal_lr: bool = True
+    anneal_lr: bool = False
     """Toggle learning rate annealing for policy and value networks"""
     gamma: float = 0.99
     """the discount factor gamma"""
@@ -146,54 +146,10 @@ class PositionalEncoding(nn.Module):
         pos_emb = torch.cat((sinusoidal_inp.sin(), sinusoidal_inp.cos()), dim = -1)
         return pos_emb
     
-class MultiHeadAttention(nn.Module):
-    """Multi Head Attention without dropout inspired by https://github.com/aladdinpersson/Machine-Learning-Collection"""
-    def __init__(self, embed_dim, num_heads):
-        super(MultiHeadAttention, self).__init__()
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.head_size = embed_dim // num_heads
-
-        assert (
-            self.head_size * num_heads == embed_dim
-        ), "Embedding dimension needs to be divisible by the number of heads"
-
-        self.values = nn.Linear(self.head_size, self.head_size, bias=False)
-        self.keys = nn.Linear(self.head_size, self.head_size, bias=False)
-        self.queries = nn.Linear(self.head_size, self.head_size, bias=False)
-        self.fc_out = nn.Linear(self.num_heads * self.head_size, embed_dim)
-
-    def forward(self, values, keys, query, mask):
-        N = query.shape[0]
-        value_len, key_len, query_len = values.shape[1], keys.shape[1], query.shape[1]
-        values = values.reshape(N, value_len, self.num_heads, self.head_size)
-        keys = keys.reshape(N, key_len, self.num_heads, self.head_size)
-        query = query.reshape(N, query_len, self.num_heads, self.head_size)
-        values = self.values(values)  # (N, value_len, heads, head_dim)
-        keys = self.keys(keys)  # (N, key_len, heads, head_dim)
-        queries = self.queries(query)  # (N, query_len, heads, heads_dim)
-
-        # Dot-product
-        energy = torch.einsum("nqhd,nkhd->nhqk", [queries, keys])
-
-        # Mask padded indices so their attention weights become 0
-        if mask is not None:
-            energy = energy.masked_fill(mask.unsqueeze(1).unsqueeze(1) == 0, float("-1e20")) # -inf causes NaN
-
-        # Normalize energy values and apply softmax to retreive the attention scores
-        attention = torch.softmax(energy / (self.embed_dim ** (1 / 2)), dim=3) # attention shape: (N, heads, query_len, key_len)
-
-        # Scale values by attention weights
-        out = torch.einsum("nhql,nlhd->nqhd", [attention, values]).reshape(
-            N, query_len, self.num_heads * self.head_size
-        )
-
-        return self.fc_out(out), attention
-    
 class TransformerBlock(nn.Module):
     def __init__(self, dim, num_heads):
         super().__init__()
-        self.attention = MultiHeadAttention(dim, num_heads)
+        self.attention = nn.MultiheadAttention(dim, num_heads, batch_first=True)
         self.layer_norm_q = nn.LayerNorm(dim)
         self.norm_kv = nn.LayerNorm(dim)
         self.layer_norm_attn = nn.LayerNorm(dim)
@@ -204,7 +160,7 @@ class TransformerBlock(nn.Module):
         query_ = self.layer_norm_q(query)
         value = self.norm_kv(value)
         key = value                     # K = V -> self-attention
-        attention, attention_weights = self.attention(value, key, query_, mask) # MHA
+        attention, attention_weights = self.attention(query_, key, value, key_padding_mask = mask) # MHA
         x = attention + query               # Skip connection
         x_ = self.layer_norm_attn(x)        # Pre-layer normalization
         forward = self.fc_projection(x_)    # Forward projection
@@ -392,20 +348,20 @@ if __name__ == "__main__":
     # Setup placeholders for each environments's current episodic memory
     next_memory = torch.zeros((args.num_envs, max_episode_steps, args.trxl_num_blocks, args.trxl_dim), dtype=torch.float32)
     # Generate episodic memory mask used in attention
-    memory_mask = torch.tril(torch.ones((args.trxl_memory_length, args.trxl_memory_length)), diagonal=-1)
-    """ e.g. memory mask tensor looks like this if memory_length = 6
-    0, 0, 0, 0, 0, 0
-    1, 0, 0, 0, 0, 0
-    1, 1, 0, 0, 0, 0
-    1, 1, 1, 0, 0, 0
-    1, 1, 1, 1, 0, 0
-    1, 1, 1, 1, 1, 0
+    memory_mask = 1 - torch.tril(torch.ones((args.trxl_memory_length, args.trxl_memory_length)), diagonal=-1)
+    memory_mask[0,0] = 0 # Workaround to prevent nan
+    """ e.g. memory mask tensor looks like this if memory_length = 5
+    0, 1, 1, 1, 1
+    0, 1, 1, 1, 1
+    0, 0, 1, 1, 1
+    0, 0, 0, 1, 1
+    0, 0, 0, 0, 1
     """         
     # Setup memory window indices to support a sliding window over the episodic memory
     repetitions = torch.repeat_interleave(torch.arange(0, args.trxl_memory_length).unsqueeze(0), args.trxl_memory_length - 1, dim = 0).long()
     memory_indices = torch.stack([torch.arange(i, i + args.trxl_memory_length) for i in range(max_episode_steps - args.trxl_memory_length + 1)]).long()
     memory_indices = torch.cat((repetitions, memory_indices))
-    """ e.g. the memory window indices tensor looks like this if memory_length = 4 and max_episode_length = 7:
+    """ e.g. the memory window indices tensor looks like this if memory_length = 4 and max_episode_steps = 7:
     0, 1, 2, 3
     0, 1, 2, 3
     0, 1, 2, 3
