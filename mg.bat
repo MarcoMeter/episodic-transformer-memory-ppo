@@ -7,7 +7,7 @@ call conda activate %environment_name%
 
 python train.py ^
   --env_id MiniGrid-MemoryS9-v0 ^
-  --total_timesteps 1000000 ^
+  --total_timesteps 1500000 ^
   --num_envs 16 ^
   --num_steps 512 ^
   --num_minibatches 8 ^

@@ -318,20 +318,23 @@ if __name__ == "__main__":
     args.num_iterations = args.total_timesteps // args.batch_size
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
-    # Determine the device to be used for training and set the default tensor type
-    if args.cuda:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        if torch.cuda.is_available():
-            torch.set_default_tensor_type("torch.cuda.FloatTensor")
-    else:
-        device = torch.device("cpu")
-        torch.set_default_tensor_type("torch.FloatTensor")
+    if args.track:
+        import wandb
 
-    # Setup Tensorboard Summary Writer
-    if not os.path.exists("./summaries"):
-        os.makedirs("./summaries")
-    timestamp = time.strftime("/%Y%m%d-%H%M%S" + "/")
-    writer = SummaryWriter("./summaries/" + "x_" + timestamp)
+        wandb.init(
+            project=args.wandb_project_name,
+            entity=args.wandb_entity,
+            sync_tensorboard=True,
+            config=vars(args),
+            name=run_name,
+            monitor_gym=True,
+            save_code=True,
+        )
+    writer = SummaryWriter(f"runs/{run_name}")
+    writer.add_text(
+        "hyperparameters",
+        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
+    )
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
@@ -342,15 +345,30 @@ if __name__ == "__main__":
     torch.backends.cudnn.deterministic = args.torch_deterministic
     os.environ['PYTHONHASHSEED'] = str(args.seed)
 
-    print("Step 1: Init environments")
+    # Determine the device to be used for training and set the default tensor type
+    if args.cuda:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            torch.set_default_tensor_type("torch.cuda.FloatTensor")
+    else:
+        device = torch.device("cpu")
+        torch.set_default_tensor_type("torch.FloatTensor")
+
+    # Environment setup
     envs = gym.vector.SyncVectorEnv(
         [make_env(args.env_id, i, args.capture_video, run_name) for i in range(args.num_envs)],
     )
     observation_space = envs.single_observation_space
     action_space_shape = (envs.single_action_space.n,) if isinstance(envs.single_action_space, gym.spaces.Discrete) else tuple(envs.single_action_space.nvec)
+    env_ids = range(args.num_envs)
+    env_current_episode_step = torch.zeros((args.num_envs, ), dtype=torch.long)
     max_episode_steps = 96
 
-    print("Step 2: Init buffer")
+    agent = Agent(args, observation_space, action_space_shape, max_episode_steps).to(device)
+    optimizer = optim.AdamW(agent.parameters(), lr=args.learning_rate)
+    bce_loss = nn.BCELoss() # Binary cross entropy loss for observation reconstruction
+
+    # ALGO Logic: Storage setup
     rewards = torch.zeros((args.num_steps, args.num_envs))
     actions = torch.zeros((args.num_steps, args.num_envs, len(action_space_shape)), dtype=torch.long)
     dones = torch.zeros((args.num_steps, args.num_envs))
@@ -367,21 +385,13 @@ if __name__ == "__main__":
     # Indices to slice the episode memories into windows
     stored_memory_indices = torch.zeros((args.num_steps, args.num_envs, args.trxl_memory_length), dtype=torch.long)
 
-    print("Step 3: Init model and optimizer")
-    agent = Agent(args, observation_space, action_space_shape, max_episode_steps).to(device)
-    agent.train()
-    optimizer = optim.AdamW(agent.parameters(), lr=args.learning_rate)
-    bce_loss = nn.BCELoss() # Binary cross entropy loss for observation reconstruction
-
-    print("Step 4: Reset environments")
-    # Grab initial observations and store them in their respective placeholder location
+    # TRY NOT TO MODIFY: start the game
     global_step = 0
-    env_ids = range(args.num_envs)
-    env_current_episode_step = torch.zeros((args.num_envs, ), dtype=torch.long)
+    start_time = time.time()
+    episode_infos = deque(maxlen=100)   # Store episode results for monitoring statistics
     next_obs, _ = envs.reset()
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs)
-
     # Setup placeholders for each environments's current episodic memory
     next_memory = torch.zeros((args.num_envs, max_episode_steps, args.trxl_num_blocks, args.trxl_dim), dtype=torch.float32)
     # Generate episodic memory mask used in attention
@@ -408,19 +418,24 @@ if __name__ == "__main__":
     3, 4, 5, 6
     """
 
-    print("Step 5: Starting training using " + str(device))
-    episode_infos = deque(maxlen=100)   # Store episode results for monitoring statistics
-
     for iteration in range(1, args.num_iterations + 1):
         sampled_episode_infos = []
+
+        # Annealing the learning rate if instructed to do so
+        if args.anneal_lr:
+            frac = 1.0 - (iteration - 1.0) / args.num_iterations
+            lrnow = frac * args.learning_rate
+            optimizer.param_groups[0]["lr"] = lrnow
     
-        # Init episodic memory buffer using each workers' current episodic memory
+        # Init episodic memory buffer using each environments' current episodic memory
         stored_memories = [next_memory[e] for e in range(args.num_envs)]
         for e in range(args.num_envs):
             stored_memory_index[:, e] = e
 
         for step in range(args.num_steps):
             global_step += args.num_envs
+
+            # ALGO LOGIC: action logic
             with torch.no_grad():
                 obs[step] = next_obs
                 dones[step] = next_done
