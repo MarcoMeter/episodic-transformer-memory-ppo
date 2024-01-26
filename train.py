@@ -573,6 +573,9 @@ if __name__ == "__main__":
                         approx_kl.mean().cpu().data.numpy(),
                         clip_fraction.cpu().data.numpy()])
 
+            if args.target_kl is not None and approx_kl > args.target_kl:
+                break
+
         training_stats = np.mean(train_info, axis=0)
 
         # Log and monitor training statistics
