@@ -4,6 +4,7 @@ import time
 from dataclasses import dataclass
 
 import gymnasium as gym
+import memory_gym
 import numpy as np
 import torch
 import torch.nn as nn
@@ -109,11 +110,12 @@ def make_env(env_id, idx, capture_video, run_name):
         if "MiniGrid" in env_id:
             env = gym.make(env_id, agent_view_size=3, tile_size = 28)
             env = ImgObsWrapper(RGBImgPartialObsWrapper(env, tile_size = 28))
+            env = gym.wrappers.TimeLimit(env, 96)
 
         if len(env.observation_space.shape) > 1:
             env = gym.wrappers.GrayScaleObservation(env)
             env = gym.wrappers.FrameStack(env, 1)
-        env = gym.wrappers.TimeLimit(env, 96) # TODO: retrieve from Memory Gym envs
+        
         return gym.wrappers.RecordEpisodeStatistics(env)
 
     return thunk
@@ -315,7 +317,11 @@ if __name__ == "__main__":
     action_space_shape = (envs.single_action_space.n,) if isinstance(envs.single_action_space, gym.spaces.Discrete) else tuple(envs.single_action_space.nvec)
     env_ids = range(args.num_envs)
     env_current_episode_step = torch.zeros((args.num_envs, ), dtype=torch.long)
-    max_episode_steps = 96
+    # Determine maximum episode steps
+    max_episode_steps = envs.envs[0].spec.max_episode_steps
+    if not max_episode_steps:
+        envs.envs[0].reset()    # Memory Gym envs need to be reset before accessing max_episode_steps
+        max_episode_steps = envs.envs[0].max_episode_steps
 
     agent = Agent(args, observation_space, action_space_shape, max_episode_steps).to(device)
     optimizer = optim.AdamW(agent.parameters(), lr=args.learning_rate)
@@ -349,9 +355,9 @@ if __name__ == "__main__":
     next_memory = torch.zeros((args.num_envs, max_episode_steps, args.trxl_num_blocks, args.trxl_dim), dtype=torch.float32)
     # Generate episodic memory mask used in attention
     memory_mask = 1 - torch.tril(torch.ones((args.trxl_memory_length, args.trxl_memory_length)), diagonal=-1)
-    memory_mask[0,0] = 0 # Workaround to prevent nan
+    memory_mask[0,0] = 0
     """ e.g. memory mask tensor looks like this if memory_length = 5
-    0, 1, 1, 1, 1
+    0, 1, 1, 1, 1 # Workaround to prevent nan
     0, 1, 1, 1, 1
     0, 0, 1, 1, 1
     0, 0, 0, 1, 1
