@@ -1,6 +1,6 @@
 @echo off
 set conda_path=C:\ProgramData\Anaconda3
-set environment_name=episodic
+set environment_name=cleanrl
 
 call %conda_path%\Scripts\activate.bat %conda_path%
 call conda activate %environment_name%

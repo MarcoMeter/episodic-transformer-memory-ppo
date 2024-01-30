@@ -1,6 +1,6 @@
 @echo off
 set conda_path=C:\ProgramData\Anaconda3
-set environment_name=episodic
+set environment_name=cleanrl
 
 call %conda_path%\Scripts\activate.bat %conda_path%
 call conda activate %environment_name%
@@ -15,7 +15,7 @@ python train.py ^
   --trxl_num_blocks 4 ^
   --trxl_num_heads 1 ^
   --trxl_dim 64 ^
-  --trxl_memory_length 32 ^
+  --trxl_memory_length 16 ^
   --trxl_positional_encoding none ^
   --vf_coef 0.1 ^
   --max_grad_norm 0.5 ^
