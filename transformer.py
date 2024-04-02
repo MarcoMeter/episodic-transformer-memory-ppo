@@ -23,12 +23,12 @@ class MultiHeadAttention(nn.Module):
             self.head_size * num_heads == embed_dim
         ), "Embedding dimension needs to be divisible by the number of heads"
 
-        self.values = nn.Linear(self.head_size, self.head_size, bias=False)
-        self.keys = nn.Linear(self.head_size, self.head_size, bias=False)
-        self.queries = nn.Linear(self.head_size, self.head_size, bias=False)
-        self.fc_out = nn.Linear(self.num_heads * self.head_size, embed_dim)
+        self.values = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.keys = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.queries = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.fc_out = nn.Linear(embed_dim, embed_dim)
 
-    def forward(self, values, keys, query, mask):
+    def forward(self, values, keys, queries, mask):
         """
         The forward pass of the multi head attention layer.
         
@@ -47,13 +47,13 @@ class MultiHeadAttention(nn.Module):
         value_len, key_len, query_len = values.shape[1], keys.shape[1], query.shape[1]
 
         # Split the embedding into self.num_heads different pieces
-        values = values.reshape(N, value_len, self.num_heads, self.head_size)
-        keys = keys.reshape(N, key_len, self.num_heads, self.head_size)
-        query = query.reshape(N, query_len, self.num_heads, self.head_size)
-
-        values = self.values(values)  # (N, value_len, heads, head_dim)
-        keys = self.keys(keys)  # (N, key_len, heads, head_dim)
-        queries = self.queries(query)  # (N, query_len, heads, heads_dim)
+        values = self.values(values)    # (N, value_len, embed_dim)
+        keys = self.keys(keys)          # (N, key_len, embed_dim)
+        queries = self.queries(queries) # (N, query_len, embed_dim)
+        
+        values = values.reshape(N, value_len, self.num_heads, self.head_size)   # (N, value_len, heads, head_dim)
+        keys = keys.reshape(N, key_len, self.num_heads, self.head_size)         # (N, key_len, heads, head_dim)
+        queries = queries.reshape(N, query_len, self.num_heads, self.head_size) # (N, query_len, heads, heads_dim)
 
         # Einsum does matrix mult. for query*keys for each training example
         energy = torch.einsum("nqhd,nkhd->nhqk", [queries, keys])
