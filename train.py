@@ -162,20 +162,20 @@ class MultiHeadAttention(nn.Module):
             self.head_size * num_heads == embed_dim
         ), "Embedding dimension needs to be divisible by the number of heads"
 
-        self.values = nn.Linear(self.head_size, self.head_size, bias=False)
-        self.keys = nn.Linear(self.head_size, self.head_size, bias=False)
-        self.queries = nn.Linear(self.head_size, self.head_size, bias=False)
-        self.fc_out = nn.Linear(self.num_heads * self.head_size, embed_dim)
+        self.values = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.keys = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.queries = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.fc_out = nn.Linear(embed_dim, embed_dim)
 
-    def forward(self, values, keys, query, mask):
-        N = query.shape[0]
-        value_len, key_len, query_len = values.shape[1], keys.shape[1], query.shape[1]
+    def forward(self, values, keys, queries, mask):
+        N = queries.shape[0]
+        value_len, key_len, query_len = values.shape[1], keys.shape[1], queries.shape[1]
+        values = self.values(values)    # (N, value_len, heads, embed_dim)
+        keys = self.keys(keys)          # (N, key_len, heads, embed_dim)
+        queries = self.queries(queries) # (N, query_len, heads, embed_dim)
         values = values.reshape(N, value_len, self.num_heads, self.head_size)
         keys = keys.reshape(N, key_len, self.num_heads, self.head_size)
-        query = query.reshape(N, query_len, self.num_heads, self.head_size)
-        values = self.values(values)  # (N, value_len, heads, head_dim)
-        keys = self.keys(keys)  # (N, key_len, heads, head_dim)
-        queries = self.queries(query)  # (N, query_len, heads, heads_dim)
+        queries = queries.reshape(N, query_len, self.num_heads, self.head_size)
 
         # Dot-product
         energy = torch.einsum("nqhd,nkhd->nhqk", [queries, keys])
