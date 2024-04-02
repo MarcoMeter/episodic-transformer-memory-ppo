@@ -251,7 +251,7 @@ class Agent(nn.Module):
         self.max_episode_steps = max_episode_steps
 
         if len(self.obs_shape) > 1:
-            self.cnn = nn.Sequential(
+            self.encoder = nn.Sequential(
                 layer_init(nn.Conv2d(1, 32, 8, stride=4)),
                 nn.ReLU(),
                 layer_init(nn.Conv2d(32, 64, 4, stride=2)),
@@ -262,11 +262,8 @@ class Agent(nn.Module):
                 layer_init(nn.Linear(64 * 7 * 7, args.trxl_dim)),
                 nn.ReLU(),
             )
-            in_features_next_layer = args.trxl_dim
         else:
-            in_features_next_layer = observation_space.shape[0]
-
-        self.lin_hidden = layer_init(nn.Linear(in_features_next_layer, args.trxl_dim))
+            self.encoder = layer_init(nn.Linear(observation_space.shape[0], args.trxl_dim))
 
         self.transformer = Transformer(args.trxl_num_blocks, args.trxl_dim, args.trxl_num_heads, self.max_episode_steps, args.trxl_positional_encoding)
 
@@ -291,15 +288,17 @@ class Agent(nn.Module):
     
     def get_value(self, x, memory, memory_mask, memory_indices):
         if len(self.obs_shape) > 1:
-            x = self.cnn(x / 255.0)
-        x = F.relu(self.lin_hidden(x))
+            x = self.encoder(x / 255.0)
+        else:
+            x = self.encoder(x)
         x, _ = self.transformer(x, memory, memory_mask, memory_indices)
         return self.critic(x).flatten()
 
     def get_action_and_value(self, x, memory, memory_mask, memory_indices, action=None):
         if len(self.obs_shape) > 1:
-            x = self.cnn(x / 255.0)
-        x = F.relu(self.lin_hidden(x))
+            x = self.encoder(x / 255.0)
+        else:
+            x = self.encoder(x)
         x, memory = self.transformer(x, memory, memory_mask, memory_indices)
         self.x = x
         probs = [Categorical(logits=branch(x)) for branch in self.actor_branches]
@@ -597,7 +596,7 @@ if __name__ == "__main__":
                 episode_result[key + "_mean"] = np.mean([info[key] for info in episode_infos])
 
         print("{:9} return={:.2f} length={:.1f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} adv={:.3f}".format(
-                global_step, episode_result["r_mean"], episode_result["l_mean"], training_stats[0], training_stats[1], 
+                iteration, episode_result["r_mean"], episode_result["l_mean"], training_stats[0], training_stats[1], 
                 training_stats[3], training_stats[2], torch.mean(values), torch.mean(advantages)))
 
         if episode_result:
