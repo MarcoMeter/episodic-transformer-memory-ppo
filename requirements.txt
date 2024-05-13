@@ -1,6 +1,6 @@
 docopt==0.6.2
 einops==0.4.1
-gymnsium
+gymnasium
 minigrid
 matplotlib
 memory-gym
