@@ -35,7 +35,7 @@ class MultiHeadAttention(nn.Module):
         Arguments:
             values {torch.tensor} -- Value in shape of (N, L, D)
             keys {torch.tensor} -- Keys in shape of (N, L, D)
-            query {torch.tensor} -- Queries in shape of (N, L, D)
+            queries {torch.tensor} -- Queries in shape of (N, L, D)
             mask {torch.tensor} -- Attention mask in shape of (N, L)
             
         Returns:
@@ -43,8 +43,8 @@ class MultiHeadAttention(nn.Module):
             torch.tensor -- Attention weights
         """
         # Get number of training examples and sequence lengths
-        N = query.shape[0]
-        value_len, key_len, query_len = values.shape[1], keys.shape[1], query.shape[1]
+        N = queries.shape[0]
+        value_len, key_len, query_len = values.shape[1], keys.shape[1], queries.shape[1]
 
         # Split the embedding into self.num_heads different pieces
         values = self.values(values)    # (N, value_len, embed_dim)
