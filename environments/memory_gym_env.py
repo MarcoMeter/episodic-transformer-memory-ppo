@@ -31,7 +31,7 @@ class MemoryGymWrapper():
         else:
             self._default_reset_params = reset_params
 
-        render_mode = None if not realtime_mode else "debug_rgb_array"
+        render_mode = None if not realtime_mode else "human"
         self._env = gym.make(env_name, disable_env_checker = True, render_mode = render_mode)
 
         self._realtime_mode = realtime_mode
@@ -87,7 +87,7 @@ class MemoryGymWrapper():
         vis_obs = np.swapaxes(vis_obs, 0, 2)
         vis_obs = np.swapaxes(vis_obs, 2, 1)
 
-        return vis_obs
+        return vis_obs / 255.0
 
     def step(self, action):
         """Runs one timestep of the environment's dynamics.
@@ -108,7 +108,7 @@ class MemoryGymWrapper():
         vis_obs = np.swapaxes(vis_obs, 0, 2)
         vis_obs = np.swapaxes(vis_obs, 2, 1)
 
-        return vis_obs, reward, done, info
+        return vis_obs / 255.0, reward, done, info
     
     def render(self):
         """Renders the environment."""
